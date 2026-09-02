@@ -68,9 +68,6 @@ export function SelectItem({ value, children }: { value: string; children: React
     </option>
   );
 }
-export const SelectContent = ({ children }: { children: React.ReactNode }) => <>{children}</>;
-export const SelectTrigger = ({ children }: { children: React.ReactNode }) => <>{children}</>;
-export const SelectValue = ({ children }: { children?: React.ReactNode }) => <>{children ?? null}</>;
 
 // ── Skeleton ──
 export function Skeleton({ className }: { className?: string }) {

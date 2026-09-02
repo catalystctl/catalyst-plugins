@@ -11,7 +11,6 @@ import {
   SelectItem,
   Skeleton,
   StatsCard,
-  cn,
   TEXT_MUTED,
   FONT_MONO,
   Plus,
@@ -248,29 +247,27 @@ export function FastdlAdminTab() {
           <Plus className="h-4 w-4" /> New pairing
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-center">
-          <Select value={sourceUuid} onValueChange={setSourceUuid}>
-            <SelectTrigger>
-              <SelectValue placeholder="Game server (source)" />
-            </SelectTrigger>
-            <SelectContent>
-              {serverOptions.map((s) => (
-                <SelectItem key={s.uuid} value={s.uuid}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
+          <Select
+            value={sourceUuid}
+            onValueChange={setSourceUuid}
+            placeholder="Game server (source)"
+          >
+            {serverOptions.map((s) => (
+              <SelectItem key={s.uuid} value={s.uuid}>
+                {s.name}
+              </SelectItem>
+            ))}
           </Select>
-          <Select value={fastdlUuid} onValueChange={setFastdlUuid}>
-            <SelectTrigger>
-              <SelectValue placeholder="FastDL server (target)" />
-            </SelectTrigger>
-            <SelectContent>
-              {serverOptions.map((s) => (
-                <SelectItem key={s.uuid} value={s.uuid}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
+          <Select
+            value={fastdlUuid}
+            onValueChange={setFastdlUuid}
+            placeholder="FastDL server (target)"
+          >
+            {serverOptions.map((s) => (
+              <SelectItem key={s.uuid} value={s.uuid}>
+                {s.name}
+              </SelectItem>
+            ))}
           </Select>
           <Button onClick={createPairing} disabled={!sourceUuid || !fastdlUuid || creating}>
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Pair'}
