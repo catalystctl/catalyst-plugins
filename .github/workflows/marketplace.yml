@@ -105,7 +105,12 @@ jobs:
         run: |
           git checkout --orphan dist-tmp
           git rm -rf --cached . -q
-          git add -f dist
+          # Marketplace downloadUrls are …/dist/plugins/<pkg> — ref=dist,
+          # path=plugins/<pkg> — so packages must sit at the branch ROOT.
+          # Committing dist/ as-is nests them one level too deep (404s).
+          mv dist/plugins ./plugins
+          rmdir dist
+          git add -f plugins
           git -c user.name="catalyst-bot" -c user.email="bot@catalyst.dev" \
             commit -m "dist: catpkg artifacts for ${GITHUB_SHA}"
           git push origin dist-tmp:dist --force
