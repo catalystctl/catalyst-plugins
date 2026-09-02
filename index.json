@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-02T19:52:09Z",
+  "updatedAt": "2026-09-02T21:09:45Z",
   "plugins": [
     {
       "name": "example-plugin",
@@ -15,7 +15,7 @@
         "sdk",
         "official"
       ],
-      "sha256": "3665b36f8671a91a5b99bec0d6a0454c2267c3b1ab44baf539f742cd6538b3f2"
+      "sha256": "c43a92626e466462a1465c6afdb495f0369cd59eb74e3794ff081fc6a3144587"
     },
     {
       "name": "egg-explorer",
@@ -31,7 +31,7 @@
         "pterodactyl",
         "official"
       ],
-      "sha256": "c6d486f4c14b6d1ba4f02a049f4665afc8c03550dec75ea2dbb40fd688ddd2d8"
+      "sha256": "5aa42691d6d9fc6794e63ecd6bddc7c28709363e184478da7d42801f9220d259"
     },
     {
       "name": "ticketing-plugin",
@@ -46,7 +46,7 @@
         "tickets",
         "official"
       ],
-      "sha256": "e7da79700c5aac6b9bb359ddabed7267574b7dd6f5b51f098d2ebcb5fcc5413d"
+      "sha256": "d3407ff6ab727d21d87dabfb5a0311ac3cad1977beeb7175fcaf4b6770699259"
     },
     {
       "name": "fastdl-sync",
@@ -63,7 +63,7 @@
         "content",
         "official"
       ],
-      "sha256": "c0a3cc1267486f246a979bbb75ea7692e729c947b4f3dbcb87137f3c4b1c1e01"
+      "sha256": "a2379c74c7ee513efbc2fdb814239265b5a2d9f3fb9c7b95e8b4e6eeddaaabcc"
     }
   ]
 }
