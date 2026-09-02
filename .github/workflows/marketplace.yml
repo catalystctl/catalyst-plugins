@@ -105,7 +105,7 @@ jobs:
         run: |
           git checkout --orphan dist-tmp
           git rm -rf --cached . -q
-          git add dist
+          git add -f dist
           git -c user.name="catalyst-bot" -c user.email="bot@catalyst.dev" \
             commit -m "dist: catpkg artifacts for ${GITHUB_SHA}"
           git push origin dist-tmp:dist --force
