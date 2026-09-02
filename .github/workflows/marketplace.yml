@@ -1,0 +1,111 @@
+name: Build & Publish Marketplace
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    name: Validate plugins & index
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.filter.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate every plugin manifest and index consistency
+        run: |
+          python3 - <<'PYEOF'
+          import json, sys, os
+          failures = []
+
+          # 1. Every plugin dir: manifest sanity
+          found = {}
+          for d in sorted(os.listdir('.')):
+              mpath = os.path.join(d, 'plugin.json')
+              if not os.path.isfile(mpath):
+                  continue
+              try:
+                  m = json.load(open(mpath))
+              except Exception as e:
+                  failures.append(f"{d}: invalid plugin.json: {e}")
+                  continue
+              for field in ('name', 'version', 'displayName', 'description', 'author', 'catalystVersion'):
+                  if not m.get(field):
+                      failures.append(f"{d}: missing manifest field '{field}'")
+              if m.get('name') != d:
+                  failures.append(f"{d}: manifest name '{m.get('name')}' != directory name")
+              if m.get('backend', {}).get('entry') and not os.path.isfile(os.path.join(d, m['backend']['entry'])):
+                  failures.append(f"{d}: backend entry {m['backend']['entry']} missing")
+              if m.get('frontend', {}).get('entry') and not os.path.isfile(os.path.join(d, m['frontend']['entry'])):
+                  failures.append(f"{d}: frontend entry {m['frontend']['entry']} missing")
+              found[m['name']] = m
+
+          # 2. index.json references exactly the published plugins
+          idx = json.load(open('index.json'))
+          idx_names = {e['name'] for e in idx.get('plugins', [])}
+          for name in idx_names - set(found):
+              failures.append(f"index.json: plugin '{name}' has no directory")
+          for name in set(found) - idx_names:
+              failures.append(f"index.json: missing entry for plugin '{name}'")
+          for e in idx.get('plugins', []):
+              if e.get('version') != found.get(e['name'], {}).get('version'):
+                  failures.append(f"index.json: {e['name']} version {e.get('version')} != manifest {found.get(e['name'], {}).get('version')}")
+
+          for f in failures:
+              print(f"::error::{f}")
+          print(f"validated {len(found)} plugin(s), {len(idx.get('plugins', []))} index entries")
+          sys.exit(1 if failures else 0)
+          PYEOF
+
+  package:
+    name: Build catpkg artifacts & publish dist branch
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build frontend.mjs bundles
+        run: node scripts/build-bundles.mjs
+
+      - name: Build packages (updates index.json with sha256)
+        run: |
+          sudo apt-get install -y zip
+          chmod +x scripts/build-packages.sh
+          ./scripts/build-packages.sh
+
+      - name: Commit updated index (sha256/version refresh)
+        run: |
+          git config user.name "catalyst-bot"
+          git config user.email "bot@catalyst.dev"
+          git add index.json
+          git diff --cached --quiet || git commit -m "chore: refresh index hashes [skip ci]"
+          git push origin main
+
+      - name: Publish dist branch
+        run: |
+          git checkout --orphan dist-tmp
+          git rm -rf --cached . -q
+          git add dist
+          git -c user.name="catalyst-bot" -c user.email="bot@catalyst.dev" \
+            commit -m "dist: catpkg artifacts for ${GITHUB_SHA}"
+          git push origin dist-tmp:dist --force

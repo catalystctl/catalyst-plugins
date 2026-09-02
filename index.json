@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-02T16:38:50Z",
+  "plugins": [
+    {
+      "name": "example-plugin",
+      "displayName": "Example Plugin",
+      "description": "Comprehensive showcase of Catalyst plugin capabilities",
+      "author": "Catalyst Team",
+      "version": "1.16.0",
+      "downloadUrl": "https://raw.githubusercontent.com/catalystctl/catalyst-plugins/dist/plugins/example-plugin-1.16.0.catpkg.zip",
+      "homepage": "https://github.com/catalystctl/catalyst-plugins/tree/main/example-plugin",
+      "tags": [
+        "example",
+        "sdk",
+        "official"
+      ],
+      "sha256": "b01975b22b5a8b0805dc05e4d29f97d10f8369f2c1a9ba85b6e59a2bc755da04"
+    },
+    {
+      "name": "egg-explorer",
+      "displayName": "Egg Explorer",
+      "description": "Browse and import Pterodactyl eggs directly from the panel",
+      "author": "Catalyst Team",
+      "version": "2.0.0",
+      "downloadUrl": "https://raw.githubusercontent.com/catalystctl/catalyst-plugins/dist/plugins/egg-explorer-2.0.0.catpkg.zip",
+      "homepage": "https://github.com/catalystctl/catalyst-plugins/tree/main/egg-explorer",
+      "tags": [
+        "templates",
+        "eggs",
+        "pterodactyl",
+        "official"
+      ],
+      "sha256": "0602a39161ca144d4877c0cf720bc80a9f43f03c0fea0f56dfc168c57161a4a3"
+    },
+    {
+      "name": "ticketing-plugin",
+      "displayName": "Ticketing",
+      "description": "Support ticketing with SLA tracking, comments, tags, templates, bulk actions, and real-time updates",
+      "author": "Catalyst Team",
+      "version": "3.0.0",
+      "downloadUrl": "https://raw.githubusercontent.com/catalystctl/catalyst-plugins/dist/plugins/ticketing-plugin-3.0.0.catpkg.zip",
+      "homepage": "https://github.com/catalystctl/catalyst-plugins/tree/main/ticketing-plugin",
+      "tags": [
+        "support",
+        "tickets",
+        "official"
+      ],
+      "sha256": "798ad77d2e6f607f90d097409204ac9e23215bffe1eef3af985f03d1dd0ab547"
+    },
+    {
+      "name": "fastdl-sync",
+      "displayName": "Auto FastDL",
+      "description": "Automatic FastDL (sv_downloadurl) content sync for HL1/Source game servers \u2014 upload once, clients get everything",
+      "author": "Catalyst Team",
+      "version": "1.0.0",
+      "downloadUrl": "https://raw.githubusercontent.com/catalystctl/catalyst-plugins/dist/plugins/fastdl-sync-1.0.0.catpkg.zip",
+      "homepage": "https://github.com/catalystctl/catalyst-plugins/tree/main/fastdl-sync",
+      "tags": [
+        "fastdl",
+        "cs16",
+        "gmod",
+        "content",
+        "official"
+      ],
+      "sha256": "63f8f7bd3770cf6dac59bc033505169d184f7a0f38f4d3ffc0f2694427e316ce"
+    }
+  ]
+}
