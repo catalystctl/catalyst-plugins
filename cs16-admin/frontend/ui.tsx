@@ -42,9 +42,11 @@ export function CardTitle({ children }: { children: React.ReactNode }) {
 
 export function Badge({
   tone = 'zinc',
+  title,
   children,
 }: {
   tone?: 'zinc' | 'green' | 'red' | 'amber' | 'blue' | 'purple';
+  title?: string;
   children: React.ReactNode;
 }) {
   const tones: Record<string, string> = {
@@ -56,7 +58,7 @@ export function Badge({
     purple: 'border-purple-700/50 bg-purple-950/40 text-purple-300',
   };
   return (
-    <span className={cn('inline-flex items-center rounded border px-1.5 py-0.5 text-[11px] font-medium', tones[tone])}>
+    <span title={title} className={cn('inline-flex items-center rounded border px-1.5 py-0.5 text-[11px] font-medium', tones[tone])}>
       {children}
     </span>
   );

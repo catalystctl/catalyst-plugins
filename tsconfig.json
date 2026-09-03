@@ -12,6 +12,7 @@
     "jsx": "react-jsx",
     "ignoreDeprecations": "6.0",
     "paths": {
+      "@catalyst/plugin-sdk/frontend": ["./sdk-frontend/index.ts"],
       "react": ["../catalyst-frontend/node_modules/@types/react"],
       "react-dom": ["../catalyst-frontend/node_modules/@types/react-dom"],
       "framer-motion": ["../catalyst-frontend/node_modules/framer-motion"],

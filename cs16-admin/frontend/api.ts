@@ -20,6 +20,29 @@ export interface CsSettings {
   serverId: string;
   useAmx: boolean;
   defaultBanMinutes: number;
+  transport: 'auto' | 'rcon' | 'stdin';
+  rconHost: string;
+  rconPort: number;
+  /** True when an RCON password is stored. The secret itself is never returned. */
+  rconConfigured: boolean;
+}
+
+export interface CsTransport {
+  transport: 'auto' | 'rcon' | 'stdin';
+  rcon: {
+    available: boolean;
+    reason: string | null;
+    source: 'manual' | 'server.cfg' | null;
+    host: string | null;
+    port: number | null;
+  };
+}
+
+export interface CsRefreshResult {
+  sent: string;
+  transport: 'rcon' | 'stdin';
+  /** Present when the dump came back over RCON — parse immediately. */
+  status?: string | null;
 }
 
 export interface CsBan {
@@ -73,29 +96,47 @@ export async function updateSettings(serverId: string, patch: Partial<CsSettings
   return (res as any).settings ?? (res as any);
 }
 
-export async function refreshPlayers(serverId: string): Promise<void> {
-  await unwrap(api.post(`/servers/${encodeURIComponent(serverId)}/refresh-players`, {}));
+export async function refreshPlayers(serverId: string): Promise<CsRefreshResult> {
+  const res: any = await unwrap<any>(api.post(`/servers/${encodeURIComponent(serverId)}/refresh-players`, {}));
+  return { sent: res.sent, transport: res.transport ?? 'stdin', status: res.status ?? null };
 }
 
-export async function sendRawCommand(serverId: string, command: string): Promise<string> {
-  const res: any = await unwrap<any>(api.post(`/servers/${encodeURIComponent(serverId)}/command`, { command }));
-  return res.sent ?? command;
+export async function fetchTransport(serverId: string): Promise<CsTransport> {
+  return unwrap(api.get(`/servers/${encodeURIComponent(serverId)}/transport`));
 }
 
-export async function sendSay(serverId: string, message: string, opts: { team?: boolean; useAmx?: boolean } = {}): Promise<void> {
-  await unwrap(api.post(`/servers/${encodeURIComponent(serverId)}/say`, { message, ...opts }));
+export async function testRcon(serverId: string): Promise<{ host: string; port: number; source: string; latencyMs: number; output: string }> {
+  return unwrap(api.post(`/servers/${encodeURIComponent(serverId)}/rcon-test`, {}));
 }
 
-export async function kickPlayer(serverId: string, payload: { userid?: string; name?: string; steamId?: string; reason?: string; useAmx?: boolean }): Promise<void> {
-  await unwrap(api.post(`/servers/${encodeURIComponent(serverId)}/kick`, payload));
+export interface CsSendResult {
+  sent: string;
+  transport: 'rcon' | 'stdin';
 }
 
-export async function banPlayer(serverId: string, payload: { steamId: string; name?: string; minutes?: number; reason?: string; useAmx?: boolean }): Promise<void> {
-  await unwrap(api.post(`/servers/${encodeURIComponent(serverId)}/ban`, payload));
+async function sendResult(promise: Promise<any>): Promise<CsSendResult> {
+  const res: any = await unwrap<any>(promise);
+  return { sent: res.sent, transport: res.transport ?? 'stdin' };
 }
 
-export async function unbanPlayer(serverId: string, steamId: string, useAmx?: boolean): Promise<void> {
-  await unwrap(api.post(`/servers/${encodeURIComponent(serverId)}/unban`, { steamId, useAmx }));
+export async function sendRawCommand(serverId: string, command: string): Promise<CsSendResult> {
+  return sendResult(api.post(`/servers/${encodeURIComponent(serverId)}/command`, { command }));
+}
+
+export async function sendSay(serverId: string, message: string, opts: { team?: boolean; useAmx?: boolean } = {}): Promise<CsSendResult> {
+  return sendResult(api.post(`/servers/${encodeURIComponent(serverId)}/say`, { message, ...opts }));
+}
+
+export async function kickPlayer(serverId: string, payload: { userid?: string; name?: string; steamId?: string; reason?: string; useAmx?: boolean }): Promise<CsSendResult> {
+  return sendResult(api.post(`/servers/${encodeURIComponent(serverId)}/kick`, payload));
+}
+
+export async function banPlayer(serverId: string, payload: { steamId: string; name?: string; minutes?: number; reason?: string; useAmx?: boolean }): Promise<CsSendResult> {
+  return sendResult(api.post(`/servers/${encodeURIComponent(serverId)}/ban`, payload));
+}
+
+export async function unbanPlayer(serverId: string, steamId: string, useAmx?: boolean): Promise<CsSendResult> {
+  return sendResult(api.post(`/servers/${encodeURIComponent(serverId)}/unban`, { steamId, useAmx }));
 }
 
 export async function fetchBans(serverId: string): Promise<CsBan[]> {
@@ -103,20 +144,20 @@ export async function fetchBans(serverId: string): Promise<CsBan[]> {
   return res.bans ?? [];
 }
 
-export async function changeMap(serverId: string, map: string, useAmx?: boolean): Promise<void> {
-  await unwrap(api.post(`/servers/${encodeURIComponent(serverId)}/map`, { map, useAmx }));
+export async function changeMap(serverId: string, map: string, useAmx?: boolean): Promise<CsSendResult> {
+  return sendResult(api.post(`/servers/${encodeURIComponent(serverId)}/map`, { map, useAmx }));
 }
 
-export async function restartRounds(serverId: string, seconds = 1): Promise<void> {
-  await unwrap(api.post(`/servers/${encodeURIComponent(serverId)}/restart`, { seconds }));
+export async function restartRounds(serverId: string, seconds = 1): Promise<CsSendResult> {
+  return sendResult(api.post(`/servers/${encodeURIComponent(serverId)}/restart`, { seconds }));
 }
 
-export async function setCvar(serverId: string, cvar: string, value: string): Promise<void> {
-  await unwrap(api.post(`/servers/${encodeURIComponent(serverId)}/cvar`, { cvar, value }));
+export async function setCvar(serverId: string, cvar: string, value: string): Promise<CsSendResult> {
+  return sendResult(api.post(`/servers/${encodeURIComponent(serverId)}/cvar`, { cvar, value }));
 }
 
-export async function amxAction(serverId: string, action: string, target: string, extra = ''): Promise<void> {
-  await unwrap(api.post(`/servers/${encodeURIComponent(serverId)}/amx`, { action, target, extra }));
+export async function amxAction(serverId: string, action: string, target: string, extra = ''): Promise<CsSendResult> {
+  return sendResult(api.post(`/servers/${encodeURIComponent(serverId)}/amx`, { action, target, extra }));
 }
 
 export async function fetchActions(serverId: string, limit = 30): Promise<CsAction[]> {
@@ -157,7 +198,6 @@ export function subscribeConsole(
   let es: EventSource | null = null;
   try {
     es = new EventSource(`/api/servers/${encodeURIComponent(serverId)}/console/stream`, {
-      // @ts-expect-error — withCredentials is supported by browsers for SSE
       withCredentials: true,
     });
   } catch {

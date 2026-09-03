@@ -28,6 +28,12 @@
       "default": true,
       "description": "Prefer AMX Mod X commands (amx_kick, amx_ban, amx_map) when available, with vanilla fallback"
     },
+    "defaultTransport": {
+      "type": "select",
+      "default": "auto",
+      "description": "How admin commands reach the server: auto (RCON when a password is available, else console input), rcon or stdin",
+      "options": ["auto", "rcon", "stdin"]
+    },
     "chatHistoryLimit": {
       "type": "number",
       "default": 200,

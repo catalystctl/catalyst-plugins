@@ -1,7 +1,14 @@
 /**
  * CS 1.6 Server Admin — backend entry.
- * Validated console commands (allowlist) forwarded as console_input through
- * the host WebSocket gateway, plus persistent bans, settings and action log.
+ *
+ * Command transport (per server, `transport` setting):
+ *   auto  — RCON over UDP when a password is available, otherwise stdin
+ *   rcon  — RCON only (errors when unavailable)
+ *   stdin — panel console input only (previous behavior)
+ *
+ * RCON is the reliable GoldSrc path: authenticated per command with a real
+ * response (used for `status` output). Stdin stays as a zero-config fallback.
+ * Writes require console.write, server.write or admin.write on the caller.
  */
 
 import {
@@ -18,10 +25,15 @@ import {
   normalizeMinutes,
   validateCommand,
 } from './commands.js';
+import {
+  parseRconPassword,
+  rconCommand,
+} from './rcon.js';
 
 const DEFAULT_BAN_MINUTES = 1440;
 const MAX_ACTIONS_RETURNED = 100;
 const MAX_BANS_RETURNED = 200;
+const TRANSPORTS = new Set(['auto', 'rcon', 'stdin']);
 
 function getUserId(ctx, request) {
   try {
@@ -52,7 +64,53 @@ async function loadServer(ctx, serverId) {
   return server;
 }
 
-async function sendConsole(ctx, server, command) {
+function gameDirOf(server) {
+  const env = server?.environment;
+  const raw = env && typeof env === 'object' ? env.HLDS_GAME || env.hlDs_game : null;
+  const clean = String(raw || 'cstrike').trim();
+  return /^[A-Za-z0-9_\-]+$/.test(clean) ? clean : 'cstrike';
+}
+
+/**
+ * Resolve RCON connectivity for a server.
+ * Password precedence: manual settings override, then <game>/server.cfg
+ * discovered through the file tunnel. The secret itself is never returned —
+ * only where it came from.
+ */
+async function resolveRcon(ctx, server, settings) {
+  const port = Number(settings.rconPort) || Number(server.primaryPort) || 0;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    return { available: false, reason: 'no game port known for this server' };
+  }
+  let host = String(settings.rconHost || server.primaryIp || '').trim();
+  if (!host || host === '0.0.0.0' || host === '::') {
+    return {
+      available: false,
+      reason: 'no reachable address (set the RCON host to the node public IP)',
+    };
+  }
+  if (settings.rconPassword) {
+    return { available: true, host, port, password: settings.rconPassword, source: 'manual' };
+  }
+  if (ctx.fileTunnel) {
+    try {
+      const res = await ctx.fileTunnel.queueRequest(
+        server.nodeId, 'download', server.uuid, `${gameDirOf(server)}/server.cfg`,
+      );
+      if (res?.success && res.body) {
+        const found = parseRconPassword(res.body.toString('utf8'));
+        if (found) {
+          return { available: true, host, port, password: found, source: 'server.cfg' };
+        }
+      }
+    } catch (err) {
+      ctx.logger.debug({ err: err?.message, serverId: server.id }, 'RCON password auto-detect failed');
+    }
+  }
+  return { available: false, reason: 'no rcon password (set one in server.cfg or the tab settings)' };
+}
+
+async function sendStdin(ctx, server, command) {
   const clean = validateCommand(command);
   const gateway = ctx.wsGateway;
   if (!gateway || typeof gateway.sendToAgent !== 'function') {
@@ -69,7 +127,33 @@ async function sendConsole(ctx, server, command) {
   return clean;
 }
 
-async function recordAction(ctx, { serverId, action, command, target = null, detail = null, createdBy = null }) {
+/**
+ * Send a validated command via the effective transport.
+ * Returns { command, transport, output? } — output is set when RCON ran.
+ */
+async function sendConsole(ctx, server, command, settings, { wantOutput = false } = {}) {
+  const mode = TRANSPORTS.has(settings.transport) ? settings.transport : 'auto';
+  if (mode !== 'stdin') {
+    const rcon = await resolveRcon(ctx, server, settings);
+    if (rcon.available) {
+      try {
+        const output = await rconCommand({
+          host: rcon.host, port: rcon.port, password: rcon.password, command,
+        });
+        return { command: validateCommand(command), transport: 'rcon', output };
+      } catch (err) {
+        if (mode === 'rcon') throw err;
+        ctx.logger.warn({ err: err?.message, serverId: server.id }, 'RCON failed, falling back to stdin');
+      }
+    } else if (mode === 'rcon') {
+      throw new Error(`rcon unavailable: ${rcon.reason}`);
+    }
+  }
+  const clean = await sendStdin(ctx, server, command);
+  return { command: clean, transport: 'stdin', output: null };
+}
+
+async function recordAction(ctx, { serverId, action, command, target = null, detail = null, createdBy = null, transport = null }) {
   try {
     await ctx.collection('cs16_actions').insert({
       id: `act_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
@@ -77,7 +161,7 @@ async function recordAction(ctx, { serverId, action, command, target = null, det
       action,
       command,
       target,
-      detail,
+      detail: [detail, transport ? `via ${transport}` : null].filter(Boolean).join(' ') || null,
       createdBy,
       createdAt: new Date().toISOString(),
     });
@@ -88,11 +172,24 @@ async function recordAction(ctx, { serverId, action, command, target = null, det
 
 async function getSettings(ctx, serverId) {
   const doc = await ctx.collection('cs16_settings').findOne({ serverId });
+  const fallbackTransport = TRANSPORTS.has(ctx.getConfig('defaultTransport'))
+    ? ctx.getConfig('defaultTransport')
+    : 'auto';
   return {
     serverId,
     useAmx: doc?.useAmx ?? (ctx.getConfig('useAmx') ?? true),
     defaultBanMinutes: doc?.defaultBanMinutes ?? (ctx.getConfig('defaultBanMinutes') ?? DEFAULT_BAN_MINUTES),
+    transport: doc?.transport ?? fallbackTransport,
+    rconHost: doc?.rconHost ?? '',
+    rconPort: doc?.rconPort ?? 0,
+    // Write-only secret: callers learn only whether one is stored.
+    rconConfigured: Boolean(doc?.rconPassword),
   };
+}
+
+async function getRconSecret(ctx, serverId) {
+  const doc = await ctx.collection('cs16_settings').findOne({ serverId });
+  return doc?.rconPassword || '';
 }
 
 function sendError(reply, err) {
@@ -139,7 +236,8 @@ const plugin = {
       },
     });
 
-    // Per-server settings (AMX mode, default ban length).
+    // Per-server settings (AMX mode, default ban length, transport, RCON).
+    // The RCON password is write-only: GET reports rconConfigured, never the secret.
     ctx.registerRoute({
       method: 'GET',
       url: '/servers/:id/settings',
@@ -167,15 +265,43 @@ const plugin = {
           if (body.defaultBanMinutes !== undefined) {
             patch.defaultBanMinutes = normalizeMinutes(body.defaultBanMinutes, DEFAULT_BAN_MINUTES);
           }
-          if (Object.keys(patch).length === 0) {
+          if (body.transport !== undefined) {
+            if (!TRANSPORTS.has(body.transport)) {
+              return reply.status(400).send({ success: false, error: 'transport must be auto, rcon or stdin' });
+            }
+            patch.transport = body.transport;
+          }
+          if (body.rconHost !== undefined) patch.rconHost = String(body.rconHost || '').trim();
+          if (body.rconPort !== undefined) {
+            const port = Number(body.rconPort) || 0;
+            if (body.rconPort !== '' && body.rconPort !== 0 && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+              return reply.status(400).send({ success: false, error: 'rcon port must be 1-65535' });
+            }
+            patch.rconPort = port;
+          }
+          if (body.rconPassword !== undefined) {
+            if (typeof body.rconPassword !== 'string' || body.rconPassword.length > 128) {
+              return reply.status(400).send({ success: false, error: 'rcon password must be a short string' });
+            }
+            if (body.rconPassword) {
+              patch.rconPassword = body.rconPassword;
+            } else {
+              await ctx.collection('cs16_settings').update(
+                { serverId: server.id }, { $unset: { rconPassword: '' } },
+              ).catch(() => {});
+            }
+          }
+          if (Object.keys(patch).length === 0 && body.rconPassword === undefined) {
             return reply.status(400).send({ success: false, error: 'nothing to update' });
           }
-          patch.updatedAt = new Date().toISOString();
-          const existing = await ctx.collection('cs16_settings').findOne({ serverId: server.id });
-          if (existing) {
-            await ctx.collection('cs16_settings').update({ serverId: server.id }, { $set: patch });
-          } else {
-            await ctx.collection('cs16_settings').insert({ serverId: server.id, ...patch });
+          if (Object.keys(patch).length > 0) {
+            patch.updatedAt = new Date().toISOString();
+            const existing = await ctx.collection('cs16_settings').findOne({ serverId: server.id });
+            if (existing) {
+              await ctx.collection('cs16_settings').update({ serverId: server.id }, { $set: patch });
+            } else {
+              await ctx.collection('cs16_settings').insert({ serverId: server.id, ...patch });
+            }
           }
           return { success: true, settings: await getSettings(ctx, server.id) };
         } catch (err) {
@@ -184,8 +310,69 @@ const plugin = {
       },
     });
 
-    // Ask the server for a fresh `status` dump (players are parsed client-side
-    // from the live console stream).
+    // Effective transport + RCON availability (no probing; use rcon-test to probe).
+    ctx.registerRoute({
+      method: 'GET',
+      url: '/servers/:id/transport',
+      preHandler: requireRead(),
+      handler: async (request, reply) => {
+        try {
+          const server = await loadServer(ctx, request.params.id);
+          const settings = await getSettings(ctx, server.id);
+          const secret = await getRconSecret(ctx, server.id);
+          const rcon = await resolveRcon(ctx, server, { ...settings, rconPassword: secret });
+          return {
+            success: true,
+            transport: TRANSPORTS.has(settings.transport) ? settings.transport : 'auto',
+            rcon: {
+              available: rcon.available,
+              reason: rcon.available ? null : rcon.reason,
+              source: rcon.available ? rcon.source : null,
+              host: rcon.available ? rcon.host : null,
+              port: rcon.available ? rcon.port : null,
+            },
+          };
+        } catch (err) {
+          return sendError(reply, err);
+        }
+      },
+    });
+
+    // Probe RCON with a harmless `version` command.
+    ctx.registerRoute({
+      method: 'POST',
+      url: '/servers/:id/rcon-test',
+      preHandler: requireWrite(),
+      handler: async (request, reply) => {
+        try {
+          const server = await loadServer(ctx, request.params.id);
+          const settings = await getSettings(ctx, server.id);
+          const secret = await getRconSecret(ctx, server.id);
+          const rcon = await resolveRcon(ctx, server, { ...settings, rconPassword: secret });
+          if (!rcon.available) {
+            return reply.status(400).send({ success: false, error: `rcon unavailable: ${rcon.reason}` });
+          }
+          const started = Date.now();
+          const output = await rconCommand({
+            host: rcon.host, port: rcon.port, password: rcon.password, command: 'version',
+          });
+          return {
+            success: true,
+            host: rcon.host,
+            port: rcon.port,
+            source: rcon.source,
+            latencyMs: Date.now() - started,
+            output: String(output || '').slice(0, 2000),
+          };
+        } catch (err) {
+          return sendError(reply, err);
+        }
+      },
+    });
+
+    // Ask the server for a fresh `status` dump. Over RCON the dump comes back
+    // in the response so the tab can parse players immediately; over stdin it
+    // arrives through the live console stream as before.
     ctx.registerRoute({
       method: 'POST',
       url: '/servers/:id/refresh-players',
@@ -193,12 +380,14 @@ const plugin = {
       handler: async (request, reply) => {
         try {
           const server = await loadServer(ctx, request.params.id);
-          const sent = await sendConsole(ctx, server, buildStatus());
+          const settings = await getSettings(ctx, server.id);
+          const secret = await getRconSecret(ctx, server.id);
+          const res = await sendConsole(ctx, server, buildStatus(), { ...settings, rconPassword: secret }, { wantOutput: true });
           await recordAction(ctx, {
-            serverId: server.id, action: 'refresh-players', command: sent,
-            createdBy: getUserId(ctx, request),
+            serverId: server.id, action: 'refresh-players', command: res.command,
+            createdBy: getUserId(ctx, request), transport: res.transport,
           });
-          return { success: true, sent };
+          return { success: true, sent: res.command, transport: res.transport, status: res.output };
         } catch (err) {
           return sendError(reply, err);
         }
@@ -213,13 +402,18 @@ const plugin = {
       handler: async (request, reply) => {
         try {
           const server = await loadServer(ctx, request.params.id);
-          const sent = await sendConsole(ctx, server, String(request.body?.command || ''));
+          const settings = await getSettings(ctx, server.id);
+          const secret = await getRconSecret(ctx, server.id);
+          const res = await sendConsole(
+            ctx, server, String(request.body?.command || ''),
+            { ...settings, rconPassword: secret },
+          );
           await recordAction(ctx, {
-            serverId: server.id, action: 'command', command: sent,
-            createdBy: getUserId(ctx, request),
+            serverId: server.id, action: 'command', command: res.command,
+            createdBy: getUserId(ctx, request), transport: res.transport,
           });
-          ctx.emitTyped?.('cs16-admin:command-sent', { serverId: server.id, command: sent });
-          return { success: true, sent };
+          ctx.emitTyped?.('cs16-admin:command-sent', { serverId: server.id, command: res.command });
+          return { success: true, sent: res.command, transport: res.transport, output: res.output ?? null };
         } catch (err) {
           return sendError(reply, err);
         }
@@ -235,17 +429,20 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
           const useAmx = body.useAmx ?? settings.useAmx ?? false;
-          const sent = await sendConsole(
+          const res = await sendConsole(
             ctx, server,
             buildSay(String(body.message || ''), { team: Boolean(body.team), useAmx: Boolean(useAmx) }),
+            { ...settings, rconPassword: secret },
           );
           await recordAction(ctx, {
-            serverId: server.id, action: 'say', command: sent,
+            serverId: server.id, action: 'say', command: res.command,
             detail: body.team ? 'team' : 'all', createdBy: getUserId(ctx, request),
+            transport: res.transport,
           });
-          return { success: true, sent };
+          return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);
         }
@@ -261,19 +458,22 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
           const useAmx = body.useAmx ?? settings.useAmx ?? false;
-          const sent = await sendConsole(
+          const res = await sendConsole(
             ctx, server,
             buildKick({ userid: body.userid, name: body.name, reason: body.reason, useAmx: Boolean(useAmx) }),
+            { ...settings, rconPassword: secret },
           );
           const target = body.userid || body.name || body.steamId || 'unknown';
           await recordAction(ctx, {
-            serverId: server.id, action: 'kick', command: sent, target,
+            serverId: server.id, action: 'kick', command: res.command, target,
             detail: body.reason || null, createdBy: getUserId(ctx, request),
+            transport: res.transport,
           });
           ctx.emitTyped?.('cs16-admin:player-kicked', { serverId: server.id, steamId: String(body.steamId || target) });
-          return { success: true, sent };
+          return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);
         }
@@ -289,12 +489,14 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
           const useAmx = body.useAmx ?? settings.useAmx ?? false;
           const minutes = normalizeMinutes(body.minutes ?? settings.defaultBanMinutes, DEFAULT_BAN_MINUTES);
-          const sent = await sendConsole(
+          const res = await sendConsole(
             ctx, server,
             buildBan({ steamId: body.steamId, name: body.name, minutes, reason: body.reason, useAmx: Boolean(useAmx) }),
+            { ...settings, rconPassword: secret },
           );
           const createdBy = getUserId(ctx, request);
           const ban = {
@@ -304,15 +506,15 @@ const plugin = {
             steamId: String(body.steamId || '').trim().toUpperCase(),
             minutes,
             reason: String(body.reason || '').slice(0, 128) || null,
-            command: sent,
+            command: res.command,
             status: 'active',
             createdBy,
             createdAt: new Date().toISOString(),
           };
           await ctx.collection('cs16_bans').insert(ban);
           await recordAction(ctx, {
-            serverId: server.id, action: 'ban', command: sent, target: ban.steamId,
-            detail: ban.reason, createdBy,
+            serverId: server.id, action: 'ban', command: res.command, target: ban.steamId,
+            detail: ban.reason, createdBy, transport: res.transport,
           });
           if (minutes === 0 && (ctx.getConfig('writeBansFile') ?? false) && ctx.fileTunnel) {
             try {
@@ -330,7 +532,7 @@ const plugin = {
             }
           }
           ctx.emitTyped?.('cs16-admin:player-banned', { serverId: server.id, steamId: ban.steamId });
-          return { success: true, sent, ban };
+          return { success: true, sent: res.command, transport: res.transport, ban };
         } catch (err) {
           return sendError(reply, err);
         }
@@ -346,19 +548,23 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
           const useAmx = body.useAmx ?? settings.useAmx ?? false;
           const steamId = String(body.steamId || '').trim().toUpperCase();
-          const sent = await sendConsole(ctx, server, buildUnban({ steamId, useAmx: Boolean(useAmx) }));
+          const res = await sendConsole(
+            ctx, server, buildUnban({ steamId, useAmx: Boolean(useAmx) }),
+            { ...settings, rconPassword: secret },
+          );
           await ctx.collection('cs16_bans').update(
             { serverId: server.id, steamId, status: 'active' },
             { $set: { status: 'unbanned', unbannedAt: new Date().toISOString() } },
           );
           await recordAction(ctx, {
-            serverId: server.id, action: 'unban', command: sent, target: steamId,
-            createdBy: getUserId(ctx, request),
+            serverId: server.id, action: 'unban', command: res.command, target: steamId,
+            createdBy: getUserId(ctx, request), transport: res.transport,
           });
-          return { success: true, sent };
+          return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);
         }
@@ -391,15 +597,19 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
           const useAmx = body.useAmx ?? settings.useAmx ?? false;
-          const sent = await sendConsole(ctx, server, buildMap(String(body.map || ''), { useAmx: Boolean(useAmx) }));
+          const res = await sendConsole(
+            ctx, server, buildMap(String(body.map || ''), { useAmx: Boolean(useAmx) }),
+            { ...settings, rconPassword: secret },
+          );
           await recordAction(ctx, {
-            serverId: server.id, action: 'map', command: sent, target: String(body.map || ''),
-            createdBy: getUserId(ctx, request),
+            serverId: server.id, action: 'map', command: res.command, target: String(body.map || ''),
+            createdBy: getUserId(ctx, request), transport: res.transport,
           });
           ctx.emitTyped?.('cs16-admin:map-changed', { serverId: server.id, map: String(body.map || '') });
-          return { success: true, sent };
+          return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);
         }
@@ -414,12 +624,17 @@ const plugin = {
       handler: async (request, reply) => {
         try {
           const server = await loadServer(ctx, request.params.id);
-          const sent = await sendConsole(ctx, server, buildRestart(request.body?.seconds));
+          const settings = await getSettings(ctx, server.id);
+          const secret = await getRconSecret(ctx, server.id);
+          const res = await sendConsole(
+            ctx, server, buildRestart(request.body?.seconds),
+            { ...settings, rconPassword: secret },
+          );
           await recordAction(ctx, {
-            serverId: server.id, action: 'restart', command: sent,
-            createdBy: getUserId(ctx, request),
+            serverId: server.id, action: 'restart', command: res.command,
+            createdBy: getUserId(ctx, request), transport: res.transport,
           });
-          return { success: true, sent };
+          return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);
         }
@@ -434,16 +649,22 @@ const plugin = {
       handler: async (request, reply) => {
         try {
           const server = await loadServer(ctx, request.params.id);
+          const settings = await getSettings(ctx, server.id);
+          const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
           if (!ALLOWED_CVARS.has(String(body.cvar))) {
             return reply.status(400).send({ success: false, error: `cvar not allowed: ${body.cvar}` });
           }
-          const sent = await sendConsole(ctx, server, buildCvar(String(body.cvar), body.value));
+          const res = await sendConsole(
+            ctx, server, buildCvar(String(body.cvar), body.value),
+            { ...settings, rconPassword: secret },
+          );
           await recordAction(ctx, {
-            serverId: server.id, action: 'cvar', command: sent, target: String(body.cvar),
+            serverId: server.id, action: 'cvar', command: res.command, target: String(body.cvar),
             detail: String(body.value ?? ''), createdBy: getUserId(ctx, request),
+            transport: res.transport,
           });
-          return { success: true, sent };
+          return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);
         }
@@ -458,15 +679,19 @@ const plugin = {
       handler: async (request, reply) => {
         try {
           const server = await loadServer(ctx, request.params.id);
+          const settings = await getSettings(ctx, server.id);
+          const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
-          const sent = await sendConsole(
+          const res = await sendConsole(
             ctx, server, buildAmxAction(String(body.action || ''), body.target, body.extra),
+            { ...settings, rconPassword: secret },
           );
           await recordAction(ctx, {
-            serverId: server.id, action: `amx_${body.action}`, command: sent,
+            serverId: server.id, action: `amx_${body.action}`, command: res.command,
             target: String(body.target || ''), createdBy: getUserId(ctx, request),
+            transport: res.transport,
           });
-          return { success: true, sent };
+          return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);
         }

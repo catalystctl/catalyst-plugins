@@ -26,9 +26,29 @@ Each server gets a **CS 1.6 Admin** tab with:
   and live stream (`GET /api/servers/:id/console/stream`). No extra agent
   protocol is needed.
 - Writes go through the plugin backend (`/api/plugins/cs16-admin/...`),
-  which validates every command against an allowlist and forwards it as
-  `console_input` through the WebSocket gateway. Writes require
-  `console.write`, `server.write` or `admin.write` on the requesting user.
+  which validates every command against an allowlist and sends it via the
+  configured transport. Writes require `console.write`, `server.write` or
+  `admin.write` on the requesting user.
+
+## Command transport: RCON vs console input
+
+- **RCON (recommended)** — the native GoldSrc remote-console protocol over UDP.
+  Authenticated per command with a real response, so delivery is confirmed
+  and `status` output comes straight back (the player list populates
+  instantly instead of waiting for the console echo).
+- **Console input** — the panel's standard `console_input` path, which writes
+  to the game container's standard input. Zero configuration; used
+  automatically whenever RCON is unavailable.
+
+Transport mode per server: `auto` (RCON when a password is available,
+otherwise console), `rcon` or `stdin`. The header shows which path is active.
+
+To enable RCON, set `rcon_password` in `cstrike/server.cfg` — the plugin
+detects it automatically through the file tunnel — or paste a password into
+the tab's transport settings (stored server-side, never shown back). If the
+panel reaches the server on a different address or port, override the RCON
+host and port there too. The **Test RCON** button sends a harmless `version`
+command and reports latency.
 - Bans and action history persist in plugin collections (`cs16_bans`,
   `cs16_actions`, `cs16_settings`), so they survive restarts.
 - Optional `writeBansFile` config appends permanent bans to

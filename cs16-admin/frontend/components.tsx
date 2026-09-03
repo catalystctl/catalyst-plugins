@@ -10,13 +10,13 @@ import {
   Swords, Trophy, Users,
 } from 'lucide-react';
 import * as api from './api';
-import type { CsAction, CsBan, CsServerInfo, CsSettings } from './api';
+import type { CsAction, CsBan, CsServerInfo, CsSettings, CsTransport } from './api';
 import {
   applyRoundEvent, emptyMatchState, parseChatLine, parseConnectionLine,
   parseRoundLine, parseStatusBlock,
   type CsChatMessage, type CsConnectionNotice, type CsPlayer, type CsRoundEvent, type MatchState,
 } from './parsers';
-import { Badge, Button, Card, CardTitle, FONT_MONO, Input, Skeleton, StatsCard, TEXT_MUTED, Spinner } from './ui';
+import { Badge, Button, Card, CardTitle, FONT_MONO, Input, Select, SelectItem, Skeleton, StatsCard, TEXT_MUTED, Spinner } from './ui';
 
 const HISTORY_LINES = 500;
 const MAX_TEXT_BUFFER = 200_000;
@@ -56,6 +56,7 @@ function teamBadge(team: CsChatMessage['team']) {
 export function Cs16ServerTab({ serverId }: { serverId: string }) {
   const [info, setInfo] = useState<CsServerInfo | null>(null);
   const [settings, setSettings] = useState<CsSettings | null>(null);
+  const [transport, setTransport] = useState<CsTransport | null>(null);
   const [bans, setBans] = useState<CsBan[]>([]);
   const [actions, setActions] = useState<CsAction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,15 +107,17 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
   const loadMeta = useCallback(async () => {
     setError(null);
     try {
-      const [infoRes, bansRes, actionsRes] = await Promise.all([
+      const [infoRes, bansRes, actionsRes, transportRes] = await Promise.all([
         api.fetchInfo(serverId),
         api.fetchBans(serverId).catch(() => [] as CsBan[]),
         api.fetchActions(serverId, 30).catch(() => [] as CsAction[]),
+        api.fetchTransport(serverId).catch(() => null as CsTransport | null),
       ]);
       setInfo(infoRes.server);
       setSettings(infoRes.settings);
       setBans(bansRes);
       setActions(actionsRes);
+      setTransport(transportRes);
     } catch (e: any) {
       setError(e?.message || 'Failed to load CS 1.6 admin data');
     } finally {
@@ -165,11 +168,14 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
   const refreshAll = useCallback(async () => {
     await loadMeta();
     try {
-      await api.refreshPlayers(serverId);
+      const res = await api.refreshPlayers(serverId);
+      // Over RCON the status dump comes back in the response — parse it
+      // immediately instead of waiting for the console stream echo.
+      if (res.status) ingestChunk(res.status.endsWith('\n') ? res.status : `${res.status}\n`, 'stdout');
     } catch (e: any) {
       setError(e?.message || 'Failed to request status');
     }
-  }, [loadMeta, serverId]);
+  }, [loadMeta, serverId, ingestChunk]);
 
   if (loading && !info) {
     return (
@@ -194,6 +200,7 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
         playersActive={status.playersActive ?? status.players.length}
         playersMax={status.playersMax}
         map={match.map ?? status.map}
+        transport={transport}
         onRefresh={refreshAll}
       />
 
@@ -227,8 +234,10 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
       <ControlsPanel
         serverId={serverId}
         settings={settings}
+        transport={transport}
         actions={actions}
         onSettingsChanged={(s) => setSettings(s)}
+        onTransportChanged={(t) => setTransport(t)}
         onChanged={loadMeta}
         now={now}
       />
@@ -237,13 +246,14 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
 }
 
 function Header({
-  info, connected, playersActive, playersMax, map, onRefresh,
+  info, connected, playersActive, playersMax, map, transport, onRefresh,
 }: {
   info: CsServerInfo | null;
   connected: boolean;
   playersActive: number;
   playersMax: number | null;
   map: string | null;
+  transport: CsTransport | null;
   onRefresh: () => void;
 }) {
   const [refreshing, setRefreshing] = useState(false);
@@ -261,6 +271,15 @@ function Header({
       </div>
       <div className="flex items-center gap-2">
         <Badge tone={connected ? 'green' : 'amber'}>{connected ? 'Live' : 'Connecting…'}</Badge>
+        {transport?.rcon.available ? (
+          <Badge tone="blue" title={`RCON via ${transport.rcon.source} (${transport.rcon.host}:${transport.rcon.port})`}>
+            RCON
+          </Badge>
+        ) : transport ? (
+          <Badge tone="zinc" title={transport.rcon.reason ?? 'RCON not configured — commands use console input'}>
+            Console
+          </Badge>
+        ) : null}
         <Button
           size="sm"
           variant="outline"
@@ -305,13 +324,13 @@ function PlayersPanel({
     [players, selected],
   );
 
-  const run = useCallback(async (kind: string, fn: () => Promise<void>) => {
+  const run = useCallback(async (kind: string, fn: () => Promise<{ transport?: string }>) => {
     setBusy(kind);
     setNotice(null);
     try {
-      await fn();
+      const res = await fn();
       await onChanged();
-      setNotice('Command sent.');
+      setNotice(`Command sent${res?.transport === 'rcon' ? ' via RCON.' : ' via console.'}`);
     } catch (e: any) {
       setNotice(e?.message || 'Command failed');
     } finally {
@@ -541,12 +560,12 @@ function RoundsPanel({ match, serverId, useAmx }: { match: MatchState; serverId:
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const run = async (kind: string, fn: () => Promise<void>) => {
+  const run = async (kind: string, fn: () => Promise<{ transport?: string }>) => {
     setBusy(kind);
     setNotice(null);
     try {
-      await fn();
-      setNotice('Command sent.');
+      const res = await fn();
+      setNotice(`Command sent${res?.transport === 'rcon' ? ' via RCON.' : ' via console.'}`);
       setMap('');
     } catch (e: any) {
       setNotice(e?.message || 'Command failed');
@@ -766,12 +785,14 @@ const CVAR_PRESETS: Array<{ cvar: string; label: string; placeholder: string }> 
 ];
 
 function ControlsPanel({
-  serverId, settings, actions, onSettingsChanged, onChanged, now,
+  serverId, settings, transport, actions, onSettingsChanged, onTransportChanged, onChanged, now,
 }: {
   serverId: string;
   settings: CsSettings | null;
+  transport: CsTransport | null;
   actions: CsAction[];
   onSettingsChanged: (s: CsSettings) => void;
+  onTransportChanged: (t: CsTransport | null) => void;
   onChanged: () => void;
   now: number;
 }) {
@@ -784,6 +805,21 @@ function ControlsPanel({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [banFiles, setBanFiles] = useState<Record<string, string> | null>(null);
   const [banFilesOpen, setBanFilesOpen] = useState(false);
+  const [transportMode, setTransportMode] = useState('auto');
+  const [rconHost, setRconHost] = useState('');
+  const [rconPort, setRconPort] = useState('');
+  const [rconPassword, setRconPassword] = useState('');
+  const [transportBusy, setTransportBusy] = useState(false);
+  const [rconTest, setRconTest] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!settings) return;
+    setTransportMode(settings.transport ?? 'auto');
+    setRconHost(settings.rconHost ?? '');
+    setRconPort(settings.rconPort ? String(settings.rconPort) : '');
+  }, [settings?.transport, settings?.rconHost, settings?.rconPort]);
+
+  const via = (t?: string) => (t === 'rcon' ? ' via RCON.' : ' via console.');
 
   const setCvar = async (cvar: string) => {
     const value = (cvarValues[cvar] ?? '').trim();
@@ -791,8 +827,8 @@ function ControlsPanel({
     setCvarBusy(cvar);
     setFeedback(null);
     try {
-      await api.setCvar(serverId, cvar, value);
-      setFeedback(`${cvar} sent.`);
+      const res = await api.setCvar(serverId, cvar, value);
+      setFeedback(`${cvar} sent${via(res.transport)}`);
       await onChanged();
     } catch (e: any) {
       setFeedback(e?.message || 'Cvar failed');
@@ -809,8 +845,8 @@ function ControlsPanel({
     setAmxBusy(action);
     setFeedback(null);
     try {
-      await api.amxAction(serverId, action, amxTarget.trim());
-      setFeedback(`amx_${action} sent.`);
+      const res = await api.amxAction(serverId, action, amxTarget.trim());
+      setFeedback(`amx_${action} sent${via(res.transport)}`);
       await onChanged();
     } catch (e: any) {
       setFeedback(e?.message || 'AMX command failed');
@@ -824,14 +860,51 @@ function ControlsPanel({
     setRawBusy(true);
     setFeedback(null);
     try {
-      await api.sendRawCommand(serverId, raw.trim());
-      setFeedback('Command sent.');
+      const res = await api.sendRawCommand(serverId, raw.trim());
+      setFeedback(`Command sent${via(res.transport)}`);
       setRaw('');
       await onChanged();
     } catch (e: any) {
       setFeedback(e?.message || 'Command failed');
     } finally {
       setRawBusy(false);
+    }
+  };
+
+  const saveTransport = async () => {
+    setTransportBusy(true);
+    setFeedback(null);
+    try {
+      const patch: Record<string, unknown> = {
+        transport: transportMode,
+        rconHost: rconHost.trim(),
+        rconPort: rconPort.trim() === '' ? 0 : Number(rconPort),
+      };
+      if (rconPassword) patch.rconPassword = rconPassword;
+      const next = await api.updateSettings(serverId, patch);
+      onSettingsChanged(next);
+      setRconPassword('');
+      const t = await api.fetchTransport(serverId).catch(() => null);
+      onTransportChanged(t);
+      await onChanged();
+      setFeedback('Transport settings saved.');
+    } catch (e: any) {
+      setFeedback(e?.message || 'Failed to save transport settings');
+    } finally {
+      setTransportBusy(false);
+    }
+  };
+
+  const probeRcon = async () => {
+    setTransportBusy(true);
+    setRconTest(null);
+    try {
+      const res = await api.testRcon(serverId);
+      setRconTest(`RCON ok (${res.latencyMs}ms, via ${res.source}): ${String(res.output || '').split('\n')[0].slice(0, 120)}`);
+    } catch (e: any) {
+      setRconTest(e?.message || 'RCON test failed');
+    } finally {
+      setTransportBusy(false);
     }
   };
 
@@ -881,6 +954,56 @@ function ControlsPanel({
             Use {settings?.useAmx ? 'vanilla' : 'AMX'} commands
           </Button>
           <Badge tone="zinc">{settings?.defaultBanMinutes ?? 1440} min default ban</Badge>
+        </div>
+        <div className="mt-4 border-t border-border pt-3">
+          <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--muted-foreground)' }}>
+            Command transport (RCON / console)
+          </div>
+          {transport ? (
+            <p className="text-xs mb-2" style={{ color: 'var(--muted-foreground)' }}>
+              {transport.rcon.available ? (
+                <span>RCON reachable at <span className="font-mono">{transport.rcon.host}:{transport.rcon.port}</span> (password from {transport.rcon.source}).</span>
+              ) : (
+                <span>RCON unavailable: {transport.rcon.reason} Commands use console input.</span>
+              )}
+            </p>
+          ) : null}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+            <Select value={transportMode} onValueChange={setTransportMode} placeholder="Transport mode">
+              <SelectItem value="auto">Auto (RCON when available)</SelectItem>
+              <SelectItem value="rcon">RCON only</SelectItem>
+              <SelectItem value="stdin">Console input only</SelectItem>
+            </Select>
+            <Input
+              type="password"
+              placeholder={settings?.rconConfigured ? 'RCON password stored (enter new to replace)' : 'RCON password (or set rcon_password in server.cfg)'}
+              value={rconPassword}
+              onChange={(e) => setRconPassword(e.target.value)}
+              autoComplete="off"
+            />
+            <Input
+              placeholder="RCON host (blank = server address)"
+              value={rconHost}
+              onChange={(e) => setRconHost(e.target.value)}
+              className="font-mono"
+            />
+            <Input
+              placeholder="RCON port (blank = game port)"
+              value={rconPort}
+              onChange={(e) => setRconPort(e.target.value)}
+              inputMode="numeric"
+              className="font-mono"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={transportBusy} onClick={() => void saveTransport()}>
+              {transportBusy ? <Spinner /> : null} Save transport
+            </Button>
+            <Button size="sm" variant="outline" disabled={transportBusy} onClick={() => void probeRcon()}>
+              {transportBusy ? <Spinner /> : null} Test RCON
+            </Button>
+          </div>
+          {rconTest ? <p className="mt-2 text-xs text-amber-300">{rconTest}</p> : null}
         </div>
         {feedback ? <p className="mt-2 text-xs text-amber-300">{feedback}</p> : null}
       </Card>
