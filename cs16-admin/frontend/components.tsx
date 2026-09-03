@@ -6,11 +6,11 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, Ban, Crosshair, MessageSquare, RefreshCw, Send, ShieldAlert,
+  AlertTriangle, Ban, Crosshair, Download, MessageSquare, RefreshCw, ScrollText, Send, ShieldAlert,
   Swords, Trophy, Users,
 } from 'lucide-react';
 import * as api from './api';
-import type { CsAction, CsBan, CsServerInfo, CsSettings, CsTransport } from './api';
+import type { CsBan, CsServerInfo, CsSettings, CsTransport } from './api';
 import {
   applyRoundEvent, emptyMatchState, parseChatLine, parseConnectionLine,
   parseRoundLine, parseStatusBlock,
@@ -58,7 +58,7 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
   const [settings, setSettings] = useState<CsSettings | null>(null);
   const [transport, setTransport] = useState<CsTransport | null>(null);
   const [bans, setBans] = useState<CsBan[]>([]);
-  const [actions, setActions] = useState<CsAction[]>([]);
+  const [actionCount, setActionCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
@@ -107,16 +107,15 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
   const loadMeta = useCallback(async () => {
     setError(null);
     try {
-      const [infoRes, bansRes, actionsRes, transportRes] = await Promise.all([
+      const [infoRes, bansRes, transportRes] = await Promise.all([
         api.fetchInfo(serverId),
         api.fetchBans(serverId).catch(() => [] as CsBan[]),
-        api.fetchActions(serverId, 30).catch(() => [] as CsAction[]),
         api.fetchTransport(serverId).catch(() => null as CsTransport | null),
       ]);
       setInfo(infoRes.server);
       setSettings(infoRes.settings);
       setBans(bansRes);
-      setActions(actionsRes);
+      setActionCount(infoRes.actionCount ?? null);
       setTransport(transportRes);
     } catch (e: any) {
       setError(e?.message || 'Failed to load CS 1.6 admin data');
@@ -219,7 +218,7 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
         <StatsCard label="Players" value={`${status.playersActive ?? status.players.length}${status.playersMax ? ` / ${status.playersMax}` : ''}`} sub={connected ? 'live stream' : 'last snapshot'} />
         <StatsCard label="Map" value={match.map ?? status.map ?? '—'} sub={info?.status ? `server ${info.status}` : undefined} />
         <StatsCard label="Round" value={match.round > 0 ? String(match.round) : '—'} sub={`CT ${match.ctScore} : ${match.tScore} T`} />
-        <StatsCard label="Active bans" value={String(bans.filter((b) => (b.status ?? 'active') === 'active').length)} sub={`${actions.length} recent actions`} />
+        <StatsCard label="Active bans" value={String(bans.filter((b) => (b.status ?? 'active') === 'active').length)} sub={actionCount != null ? `${actionCount} audit entries` : 'audit log below'} />
       </div>
 
       <PlayersPanel serverId={serverId} players={status.players} useAmx={settings?.useAmx ?? true} onChanged={loadMeta} />
@@ -235,11 +234,9 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
         serverId={serverId}
         settings={settings}
         transport={transport}
-        actions={actions}
         onSettingsChanged={(s) => setSettings(s)}
         onTransportChanged={(t) => setTransport(t)}
         onChanged={loadMeta}
-        now={now}
       />
     </div>
   );
@@ -785,16 +782,14 @@ const CVAR_PRESETS: Array<{ cvar: string; label: string; placeholder: string }> 
 ];
 
 function ControlsPanel({
-  serverId, settings, transport, actions, onSettingsChanged, onTransportChanged, onChanged, now,
+  serverId, settings, transport, onSettingsChanged, onTransportChanged, onChanged,
 }: {
   serverId: string;
   settings: CsSettings | null;
   transport: CsTransport | null;
-  actions: CsAction[];
   onSettingsChanged: (s: CsSettings) => void;
   onTransportChanged: (t: CsTransport | null) => void;
   onChanged: () => void;
-  now: number;
 }) {
   const [cvarValues, setCvarValues] = useState<Record<string, string>>({});
   const [cvarBusy, setCvarBusy] = useState<string | null>(null);
@@ -1053,39 +1048,183 @@ function ControlsPanel({
         </div>
       </Card>
 
-      <Card className="xl:col-span-2">
-        <CardTitle>Recent admin actions</CardTitle>
-        {actions.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
-            Nothing recorded yet. Kicks, bans, map changes and raw commands from this tab show up here.
-          </p>
-        ) : (
-          <div className="max-h-56 overflow-y-auto rounded-md border border-border">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left uppercase tracking-wide" style={{ color: 'var(--muted-foreground)' }}>
-                  <th className="px-3 py-2">Action</th>
-                  <th className="px-3 py-2">Command</th>
-                  <th className="px-3 py-2 hidden sm:table-cell">Target</th>
-                  <th className="px-3 py-2 hidden md:table-cell">When</th>
-                </tr>
-              </thead>
-              <tbody>
-                {actions.slice(0, 30).map((a) => (
-                  <tr key={a.id ?? a._id ?? `${a.command}-${a.createdAt}`} className="border-t border-border">
-                    <td className="px-3 py-1.5"><Badge tone="zinc">{a.action}</Badge></td>
-                    <td className="px-3 py-1.5 font-mono">{a.command}</td>
-                    <td className="px-3 py-1.5 hidden sm:table-cell font-mono">{a.target ?? '—'}</td>
-                    <td className="px-3 py-1.5 hidden md:table-cell" style={{ color: 'var(--muted-foreground)' }}>
-                      {timeAgo(a.createdAt, now)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+      <AuditPanel serverId={serverId} />
     </div>
+  );
+}
+
+const AUDIT_ACTIONS = [
+  'command', 'say', 'kick', 'ban', 'unban', 'map', 'restart', 'cvar',
+  'amx_slap', 'amx_slay', 'amx_gag', 'amx_ungag', 'amx_mute', 'amx_unmute',
+  'refresh-players', 'settings', 'rcon-test',
+];
+
+function AuditPanel({ serverId }: { serverId: string }) {
+  const [user, setUser] = useState('');
+  const [action, setAction] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<api.CsAuditPage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const now = useNow();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.fetchActions(serverId, {
+        user: user || undefined,
+        action: action || undefined,
+        search: search || undefined,
+        from: from || undefined,
+        to: to || undefined,
+        page,
+        pageSize: 20,
+      });
+      setData(res);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load audit log');
+    } finally {
+      setLoading(false);
+    }
+  }, [serverId, user, action, search, from, to, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [serverId, user, action, search, from, to]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      void load();
+    }, 15_000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  const csvUrl = api.auditCsvUrl(serverId, {
+    user: user || undefined,
+    action: action || undefined,
+    search: search || undefined,
+    from: from || undefined,
+    to: to || undefined,
+  });
+
+  return (
+    <Card className="xl:col-span-2">
+      <CardTitle>
+        <span className="flex items-center gap-2">
+          <ScrollText className="h-4 w-4" /> Audit log
+          {data ? <span className="font-normal" style={{ color: 'var(--muted-foreground)' }}>({data.total})</span> : null}
+        </span>
+      </CardTitle>
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mb-3">
+        <Select value={user} onValueChange={setUser} placeholder="All users">
+          {user ? <SelectItem value={user}>{data?.users.find((u) => u.id === user)?.name ?? user}</SelectItem> : null}
+          {(data?.users ?? []).filter((u) => u.id !== user).map((u) => (
+            <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+          ))}
+        </Select>
+        <Select value={action} onValueChange={setAction} placeholder="All actions">
+          {AUDIT_ACTIONS.map((a) => (
+            <SelectItem key={a} value={a}>{a}</SelectItem>
+          ))}
+        </Select>
+        <Input
+          placeholder="Search command, target…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') setSearch(searchInput.trim());
+          }}
+        />
+        <Input type="date" aria-label="From date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        <Input type="date" aria-label="To date" value={to} onChange={(e) => setTo(e.target.value)} />
+        <div className="flex gap-1.5">
+          <Button size="sm" variant="outline" onClick={() => setSearch(searchInput.trim())}>Filter</Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setUser('');
+              setAction('');
+              setSearchInput('');
+              setSearch('');
+              setFrom('');
+              setTo('');
+            }}
+          >
+            Clear
+          </Button>
+        </div>
+      </div>
+      {error ? <p className="mb-2 text-xs text-red-300">{error}</p> : null}
+      {loading && !data ? (
+        <Skeleton className="h-40 w-full" />
+      ) : !data || data.actions.length === 0 ? (
+        <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
+          No audit entries match. Every kick, ban, map change, cvar, raw command, chat message and
+          settings change from this tab is recorded here with the admin who did it.
+        </p>
+      ) : (
+        <div className="max-h-80 overflow-y-auto rounded-md border border-border">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left uppercase tracking-wide" style={{ color: 'var(--muted-foreground)' }}>
+                <th className="px-3 py-2">When</th>
+                <th className="px-3 py-2">User</th>
+                <th className="px-3 py-2">Action</th>
+                <th className="px-3 py-2 hidden sm:table-cell">Target</th>
+                <th className="px-3 py-2 hidden md:table-cell">Command</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.actions.map((a) => (
+                <tr key={a.id ?? a._id ?? `${a.command}-${a.createdAt}`} className="border-t border-border">
+                  <td className="px-3 py-1.5 whitespace-nowrap" title={a.createdAt ?? ''} style={{ color: 'var(--muted-foreground)' }}>
+                    {timeAgo(a.createdAt, now)}
+                  </td>
+                  <td className="px-3 py-1.5 font-medium" title={a.createdBy ?? ''}>
+                    {a.createdByName || a.createdBy || '—'}
+                  </td>
+                  <td className="px-3 py-1.5"><Badge tone="zinc">{a.action}</Badge></td>
+                  <td className="px-3 py-1.5 hidden sm:table-cell font-mono">{a.target ?? '—'}</td>
+                  <td className="px-3 py-1.5 hidden md:table-cell font-mono max-w-64 truncate" title={a.detail ?? a.command}>
+                    {a.command}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="outline" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+          Previous
+        </Button>
+        <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          Page {data?.page ?? page} of {totalPages}{data ? ` · ${data.total} entr${data.total === 1 ? 'y' : 'ies'}` : ''}
+        </span>
+        <Button size="sm" variant="outline" disabled={!data || page >= totalPages || loading} onClick={() => setPage((p) => p + 1)}>
+          Next
+        </Button>
+        <div className="flex-1" />
+        <Button size="sm" variant="ghost" disabled={loading} onClick={() => void load()}>
+          {loading ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" />} Refresh
+        </Button>
+        <a href={csvUrl} download>
+          <Button size="sm" variant="outline" type="button">
+            <Download className="h-3.5 w-3.5" /> Export CSV
+          </Button>
+        </a>
+      </div>
+    </Card>
   );
 }

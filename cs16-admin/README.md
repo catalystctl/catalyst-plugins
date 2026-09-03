@@ -19,6 +19,9 @@ Each server gets a **CS 1.6 Admin** tab with:
   `sv_password`, `hostname`, `mp_pause`-style pauses where supported.
 - **Quick actions** — slap, slay, gag, mute via AMX when enabled, plus a
   validated raw-command box for everything else on the allowlist.
+- **Audit log** — every action from this tab (kicks, bans, chat, map changes,
+  cvars, raw commands, settings changes, RCON probes) is recorded with the
+  admin who did it, filterable by user, action, text and date, with CSV export.
 
 ## How it works
 
@@ -50,7 +53,9 @@ panel reaches the server on a different address or port, override the RCON
 host and port there too. The **Test RCON** button sends a harmless `version`
 command and reports latency.
 - Bans and action history persist in plugin collections (`cs16_bans`,
-  `cs16_actions`, `cs16_settings`), so they survive restarts.
+  `cs16_actions`, `cs16_settings`), so they survive restarts. The audit log
+  keeps the newest 1000 entries per server. Admin usernames are resolved for
+  the log, which needs the plugin's `user.read` scope (read-only).
 - Optional `writeBansFile` config appends permanent bans to
   `cstrike/banned.cfg` via the file tunnel.
 

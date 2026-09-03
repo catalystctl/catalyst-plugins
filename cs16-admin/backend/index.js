@@ -29,6 +29,14 @@ import {
   parseRconPassword,
   rconCommand,
 } from './rcon.js';
+import {
+  MAX_AUDIT_PER_SERVER,
+  actionsToCsv,
+  applyActionFilters,
+  distinctActors,
+  overRetentionOldestFirst,
+  paginateActions,
+} from './audit.js';
 
 const DEFAULT_BAN_MINUTES = 1440;
 const MAX_ACTIONS_RETURNED = 100;
@@ -153,8 +161,28 @@ async function sendConsole(ctx, server, command, settings, { wantOutput = false 
   return { command: clean, transport: 'stdin', output: null };
 }
 
+/** Resolve a user id to a display name (null when user.read is not granted). */
+async function actorName(ctx, userId) {
+  if (!userId) return null;
+  try {
+    const user = await ctx.db.users.findUnique({
+      where: { id: userId },
+      select: { username: true, name: true },
+    });
+    return user?.username || user?.name || null;
+  } catch {
+    return null;
+  }
+}
+
 async function recordAction(ctx, { serverId, action, command, target = null, detail = null, createdBy = null, transport = null }) {
   try {
+    let createdByName = null;
+    try {
+      createdByName = createdBy ? await actorName(ctx, createdBy) : null;
+    } catch {
+      createdByName = null;
+    }
     await ctx.collection('cs16_actions').insert({
       id: `act_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
       serverId,
@@ -163,10 +191,47 @@ async function recordAction(ctx, { serverId, action, command, target = null, det
       target,
       detail: [detail, transport ? `via ${transport}` : null].filter(Boolean).join(' ') || null,
       createdBy,
+      createdByName,
       createdAt: new Date().toISOString(),
     });
+    // Bound the log: prune oldest beyond the retention cap.
+    try {
+      const all = await ctx.collection('cs16_actions').find({ serverId });
+      for (const old of overRetentionOldestFirst(all, MAX_AUDIT_PER_SERVER)) {
+        if (old?._id) await ctx.collection('cs16_actions').delete({ _id: old._id });
+      }
+    } catch (err) {
+      ctx.logger.debug({ err: err?.message, serverId }, 'Audit retention prune failed');
+    }
   } catch (err) {
     ctx.logger.warn({ err: err?.message, serverId, action }, 'Failed to record admin action');
+  }
+}
+
+/**
+ * Attach display names to audit docs missing them (records written before
+ * the name was stored, or after a username change). Never throws.
+ */
+async function backfillActorNames(ctx, docs) {
+  const ids = [...new Set(
+    (Array.isArray(docs) ? docs : [])
+      .filter((d) => d?.createdBy && !d.createdByName)
+      .map((d) => d.createdBy),
+  )];
+  if (ids.length === 0) return docs;
+  try {
+    const users = await ctx.db.users.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, username: true, name: true },
+    });
+    const names = new Map((users || []).map((u) => [u.id, u.username || u.name || u.id]));
+    return docs.map((d) => (
+      d?.createdBy && !d.createdByName && names.has(d.createdBy)
+        ? { ...d, createdByName: names.get(d.createdBy) }
+        : d
+    ));
+  } catch {
+    return docs;
   }
 }
 
@@ -303,6 +368,14 @@ const plugin = {
               await ctx.collection('cs16_settings').insert({ serverId: server.id, ...patch });
             }
           }
+          // Settings changes are audited too (password values never logged).
+          await recordAction(ctx, {
+            serverId: server.id,
+            action: 'settings',
+            command: 'settings',
+            detail: Object.keys(patch).filter((k) => k !== 'updatedAt').join(', ') || 'no changes',
+            createdBy: getUserId(ctx, request),
+          });
           return { success: true, settings: await getSettings(ctx, server.id) };
         } catch (err) {
           return sendError(reply, err);
@@ -355,6 +428,14 @@ const plugin = {
           const started = Date.now();
           const output = await rconCommand({
             host: rcon.host, port: rcon.port, password: rcon.password, command: 'version',
+          });
+          await recordAction(ctx, {
+            serverId: server.id,
+            action: 'rcon-test',
+            command: 'version',
+            target: `${rcon.host}:${rcon.port}`,
+            createdBy: getUserId(ctx, request),
+            transport: 'rcon',
           });
           return {
             success: true,
@@ -698,7 +779,9 @@ const plugin = {
       },
     });
 
-    // Recent admin actions for the activity panel.
+    // Audit log: every action taken through this tab, filterable by actor,
+    // action type, free text and date range, with pagination.
+    // GET /servers/:id/actions?user=&action=&search=&from=YYYY-MM-DD&to=YYYY-MM-DD&page=&pageSize=
     ctx.registerRoute({
       method: 'GET',
       url: '/servers/:id/actions',
@@ -706,11 +789,58 @@ const plugin = {
       handler: async (request, reply) => {
         try {
           const server = await loadServer(ctx, request.params.id);
-          const limit = Math.min(MAX_ACTIONS_RETURNED, Math.max(1, Number(request.query?.limit) || 30));
-          const actions = await ctx.collection('cs16_actions').find(
-            { serverId: server.id }, { sort: { createdAt: -1 }, limit },
+          const q = request.query ?? {};
+          const all = await backfillActorNames(
+            ctx,
+            await ctx.collection('cs16_actions').find(
+              { serverId: server.id }, { sort: { createdAt: -1 } },
+            ),
           );
-          return { success: true, actions };
+          const filtered = applyActionFilters(all, {
+            user: q.user, action: q.action, search: q.search, from: q.from, to: q.to,
+          });
+          // Legacy callers pass only `limit`: behave like page 1 of that size.
+          const pageSize = q.page || q.pageSize
+            ? q.pageSize
+            : Math.min(MAX_ACTIONS_RETURNED, Math.max(1, Number(q.limit) || 30));
+          const page = paginateActions(filtered, q.page || 1, pageSize);
+          return {
+            success: true,
+            actions: page.items,
+            total: page.total,
+            page: page.page,
+            pageSize: page.pageSize,
+            users: distinctActors(all),
+          };
+        } catch (err) {
+          return sendError(reply, err);
+        }
+      },
+    });
+
+    // Export the filtered audit log as CSV (same filters as the list).
+    ctx.registerRoute({
+      method: 'GET',
+      url: '/servers/:id/actions.csv',
+      preHandler: requireRead(),
+      handler: async (request, reply) => {
+        try {
+          const server = await loadServer(ctx, request.params.id);
+          const q = request.query ?? {};
+          const all = await backfillActorNames(
+            ctx,
+            await ctx.collection('cs16_actions').find(
+              { serverId: server.id }, { sort: { createdAt: -1 } },
+            ),
+          );
+          const filtered = applyActionFilters(all, {
+            user: q.user, action: q.action, search: q.search, from: q.from, to: q.to,
+          }).slice(0, MAX_AUDIT_PER_SERVER);
+          const csv = actionsToCsv(filtered);
+          return reply
+            .header('Content-Type', 'text/csv; charset=utf-8')
+            .header('Content-Disposition', `attachment; filename="cs16-audit-${server.id}.csv"`)
+            .send(csv);
         } catch (err) {
           return sendError(reply, err);
         }

@@ -7,7 +7,8 @@
   "catalystVersion": ">=1.0.0",
   "permissions": [
     "server.read",
-    "server.write"
+    "server.write",
+    "user.read"
   ],
   "backend": {
     "entry": "backend/index.js"

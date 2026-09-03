@@ -68,6 +68,25 @@ export interface CsAction {
   detail?: string | null;
   createdAt?: string;
   createdBy?: string | null;
+  createdByName?: string | null;
+}
+
+export interface CsActionFilters {
+  user?: string;
+  action?: string;
+  search?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface CsAuditPage {
+  actions: CsAction[];
+  total: number;
+  page: number;
+  pageSize: number;
+  users: Array<{ id: string; name: string }>;
 }
 
 async function unwrap<T>(promise: Promise<any>, key?: string): Promise<T> {
@@ -160,9 +179,35 @@ export async function amxAction(serverId: string, action: string, target: string
   return sendResult(api.post(`/servers/${encodeURIComponent(serverId)}/amx`, { action, target, extra }));
 }
 
-export async function fetchActions(serverId: string, limit = 30): Promise<CsAction[]> {
-  const res: any = await unwrap<any>(api.get(`/servers/${encodeURIComponent(serverId)}/actions?limit=${limit}`));
-  return res.actions ?? [];
+export async function fetchActions(serverId: string, filters: CsActionFilters = {}): Promise<CsAuditPage> {
+  const params = new URLSearchParams();
+  if (filters.user) params.set('user', filters.user);
+  if (filters.action) params.set('action', filters.action);
+  if (filters.search) params.set('search', filters.search);
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
+  params.set('page', String(filters.page ?? 1));
+  params.set('pageSize', String(filters.pageSize ?? 20));
+  const res: any = await unwrap<any>(api.get(`/servers/${encodeURIComponent(serverId)}/actions?${params.toString()}`));
+  // Legacy shape (plain array) is still accepted.
+  if (Array.isArray(res)) return { actions: res, total: res.length, page: 1, pageSize: res.length, users: [] };
+  return {
+    actions: res.actions ?? [],
+    total: res.total ?? 0,
+    page: res.page ?? 1,
+    pageSize: res.pageSize ?? 20,
+    users: res.users ?? [],
+  };
+}
+
+export function auditCsvUrl(serverId: string, filters: CsActionFilters = {}): string {
+  const params = new URLSearchParams();
+  if (filters.user) params.set('user', filters.user);
+  if (filters.action) params.set('action', filters.action);
+  if (filters.search) params.set('search', filters.search);
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
+  return `/api/plugins/cs16-admin/servers/${encodeURIComponent(serverId)}/actions.csv?${params.toString()}`;
 }
 
 export async function fetchBanFiles(serverId: string): Promise<{ available: boolean; files: Record<string, string> }> {
