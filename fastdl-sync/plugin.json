@@ -1,6 +1,6 @@
 {
   "name": "fastdl-sync",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "displayName": "Auto FastDL",
   "description": "Automatic Fast Download (sv_downloadurl) content sync. Scans game servers for downloadable content (maps, models, sounds, materials) and mirrors it to a FastDL server on the same node — upload once, clients get everything.",
   "author": "Catalyst Team",

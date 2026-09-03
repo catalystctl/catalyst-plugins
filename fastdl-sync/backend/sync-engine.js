@@ -17,6 +17,33 @@ const DOWNLOADABLE_TOP_DIRS = [
 ];
 
 /**
+ * The agent returns `data` as the file array itself (see file_tunnel.rs
+ * handle_list). `{ entries: [...] }` is accepted too. Never read
+ * `data.entries` on an array — that's Array.prototype.entries, a function,
+ * which produced "entries.filter is not a function".
+ */
+export function listEntries(data) {
+  const raw = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.entries)
+      ? data.entries
+      : Array.isArray(data?.files)
+        ? data.files
+        : [];
+  return raw
+    .filter((e) => e && typeof e === 'object')
+    .map((e) => {
+      const name = String(e.name ?? '');
+      const isDirectory = Boolean(e.isDirectory ?? e.is_dir ?? e.type === 'directory');
+      const size = Number(e.size ?? 0) || 0;
+      const modified = e.modifiedAt ?? e.modified ?? e.mtime;
+      const mtimeMs = modified ? Date.parse(modified) || 0 : 0;
+      return { name, isDirectory, size, mtimeMs };
+    })
+    .filter((e) => e.name);
+}
+
+/**
  * Walk a server's downloadable content via the file tunnel.
  * Returns Map<relPath, {size, mtimeMs}> of downloadable files only.
  *
@@ -33,16 +60,15 @@ export async function scanServerContent(tunnel, nodeId, serverUuid, opts = {}) {
   // like mod dirs (contain any content dir or a .wad).
   const rootList = await tunnel.queueRequest(nodeId, 'list', serverUuid, '.');
   if (!rootList.success) throw new Error(`list root failed: ${rootList.error}`);
-  const entries = rootList.data?.entries ?? [];
-  const gameDirs = entries.filter((e) => e.isDirectory);
+  const gameDirs = listEntries(rootList.data).filter((e) => e.isDirectory);
 
   for (const gd of gameDirs) {
     // 1. Root .wad files of this game dir
     const gdList = await tunnel.queueRequest(nodeId, 'list', serverUuid, gd.name);
     if (gdList.success) {
-      for (const f of gdList.data?.entries ?? []) {
-        if (!f.isDirectory && f.name.toLowerCase().endsWith('.wad') && (f.size ?? 0) <= maxBytes) {
-          files.set(`${gd.name}/${f.name}`, { size: f.size ?? 0, mtimeMs: f.modifiedAt ? Date.parse(f.modifiedAt) : 0 });
+      for (const f of listEntries(gdList.data)) {
+        if (!f.isDirectory && f.name.toLowerCase().endsWith('.wad') && f.size <= maxBytes) {
+          files.set(`${gd.name}/${f.name}`, { size: f.size, mtimeMs: f.mtimeMs });
         }
       }
     }
@@ -73,13 +99,13 @@ async function walkTunnel(tunnel, nodeId, serverUuid, dirPath, maxBytes, depth) 
   }
   if (!res.success) return out;
 
-  for (const e of res.data?.entries ?? []) {
+  for (const e of listEntries(res.data)) {
     const child = `${dirPath}/${e.name}`;
     if (e.isDirectory) {
       const sub = await walkTunnel(tunnel, nodeId, serverUuid, child, maxBytes, depth + 1);
       for (const [p, stat] of sub) out.set(p, stat);
-    } else if ((e.size ?? 0) <= maxBytes) {
-      out.set(child, { size: e.size ?? 0, mtimeMs: e.modifiedAt ? Date.parse(e.modifiedAt) : 0 });
+    } else if (e.size <= maxBytes) {
+      out.set(child, { size: e.size, mtimeMs: e.mtimeMs });
     }
   }
   return out;
