@@ -1,0 +1,61 @@
+{
+  "name": "cs16-admin",
+  "version": "1.0.0",
+  "displayName": "CS 1.6 Server Admin",
+  "description": "Live management tab for Counter-Strike 1.6 servers: chat feed, live players with SteamID, rounds and scores, kick, ban, map control, cvars and quick admin actions.",
+  "author": "Catalyst Team",
+  "catalystVersion": ">=1.0.0",
+  "permissions": [
+    "server.read",
+    "server.write"
+  ],
+  "backend": {
+    "entry": "backend/index.js"
+  },
+  "frontend": {
+    "entry": "frontend/index.ts",
+    "hasTabs": true,
+    "hasComponents": false
+  },
+  "config": {
+    "defaultBanMinutes": {
+      "type": "number",
+      "default": 1440,
+      "description": "Default ban length in minutes applied when the admin leaves duration empty (0 = permanent)"
+    },
+    "useAmx": {
+      "type": "boolean",
+      "default": true,
+      "description": "Prefer AMX Mod X commands (amx_kick, amx_ban, amx_map) when available, with vanilla fallback"
+    },
+    "chatHistoryLimit": {
+      "type": "number",
+      "default": 200,
+      "description": "Maximum chat lines kept in the live feed per server tab"
+    },
+    "writeBansFile": {
+      "type": "boolean",
+      "default": false,
+      "description": "Also append permanent bans to cstrike/banned.cfg via the file tunnel (off by default)"
+    }
+  },
+  "events": {
+    "cs16-admin:player-banned": {
+      "payload": { "serverId": "string", "steamId": "string" },
+      "description": "An admin banned a player through the CS 1.6 tab"
+    },
+    "cs16-admin:player-kicked": {
+      "payload": { "serverId": "string", "steamId": "string" },
+      "description": "An admin kicked a player through the CS 1.6 tab"
+    },
+    "cs16-admin:map-changed": {
+      "payload": { "serverId": "string", "map": "string" },
+      "description": "An admin changed the map through the CS 1.6 tab"
+    },
+    "cs16-admin:command-sent": {
+      "payload": { "serverId": "string", "command": "string" },
+      "description": "An admin sent a validated console command through the CS 1.6 tab"
+    }
+  },
+  "dependencies": {}
+}

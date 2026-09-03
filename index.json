@@ -80,6 +80,22 @@
         "official"
       ],
       "sha256": "1e0318ecaad0207761e6de3780d7dd690f18ba35c893721354b71dc736685484"
+    },
+    {
+      "name": "cs16-admin",
+      "displayName": "CS 1.6 Server Admin",
+      "description": "Live management tab for Counter-Strike 1.6 servers: chat feed, live players with SteamID, rounds and scores, kick, ban, map control, cvars and quick admin actions",
+      "author": "Catalyst Team",
+      "version": "1.0.0",
+      "downloadUrl": "https://raw.githubusercontent.com/catalystctl/catalyst-plugins/dist/plugins/cs16-admin-1.0.0.catpkg.zip",
+      "homepage": "https://github.com/catalystctl/catalyst-plugins/tree/main/cs16-admin",
+      "tags": [
+        "cs16",
+        "admin",
+        "counter-strike",
+        "official"
+      ],
+      "sha256": "57592a18f26d4edf11afe90849ebb68ce6e02e6dee9b20f12007962104b288ac"
     }
   ]
 }
