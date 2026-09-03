@@ -1,0 +1,94 @@
+{
+  "name": "ai-assistant",
+  "version": "1.0.0",
+  "displayName": "AI Assistant",
+  "description": "Chat assistant that helps configure game servers, read server files, and analyze pasted logs to diagnose and fix issues. Bring your own model via OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages endpoints.",
+  "author": "Catalyst Team",
+  "catalystVersion": ">=1.16.0",
+  "permissions": [
+    "server.read",
+    "files.read",
+    "files.write"
+  ],
+  "permissionDescriptions": {
+    "server.read": "Read server names, status, startup variables and resource allocations so the assistant can explain your configuration",
+    "files.read": "List and read server files (configs, logs) through the file tunnel so the assistant can diagnose issues",
+    "files.write": "Only used when you enable file writes: lets the assistant save suggested config fixes directly (off by default)"
+  },
+  "backend": {
+    "entry": "backend/index.js"
+  },
+  "frontend": {
+    "entry": "frontend/index.ts",
+    "hasTabs": true,
+    "hasComponents": false
+  },
+  "config": {
+    "provider": {
+      "type": "select",
+      "default": "openai-completions",
+      "description": "LLM API dialect to speak",
+      "options": [
+        { "label": "OpenAI Chat Completions (OpenAI, OpenRouter, Ollama, vLLM, ...)", "value": "openai-completions" },
+        { "label": "OpenAI Responses API", "value": "openai-responses" },
+        { "label": "Anthropic Messages API", "value": "anthropic-messages" }
+      ]
+    },
+    "baseUrl": {
+      "type": "string",
+      "default": "https://api.openai.com/v1",
+      "description": "Base URL of the LLM endpoint (no trailing slash). Examples: https://api.openai.com/v1, https://openrouter.ai/api/v1, https://api.anthropic.com/v1, http://localhost:11434/v1"
+    },
+    "apiKey": {
+      "type": "password",
+      "default": "",
+      "description": "API key sent as Bearer token (OpenAI) or x-api-key (Anthropic). Never shown back to the browser."
+    },
+    "model": {
+      "type": "string",
+      "default": "gpt-4o-mini",
+      "description": "Model name sent to the endpoint (e.g. gpt-4o-mini, claude-sonnet-4-5, llama3.1:8b)"
+    },
+    "contextWindowTokens": {
+      "type": "number",
+      "default": 128000,
+      "description": "Max context window of the model in tokens. History and file content are truncated to fit."
+    },
+    "maxOutputTokens": {
+      "type": "number",
+      "default": 2048,
+      "description": "Max tokens the model may generate per reply"
+    },
+    "temperature": {
+      "type": "number",
+      "default": 0.2,
+      "description": "Sampling temperature 0-2. Lower is more deterministic (better for diagnostics)."
+    },
+    "systemPrompt": {
+      "type": "text",
+      "default": "You are the Catalyst panel AI assistant. Help admins configure game servers, diagnose crashes and read logs. Be concrete: cite file paths, config keys and exact values. When you are unsure, say what extra file or log line would confirm it. Never invent file contents you have not been shown via tools or pasted logs.",
+      "description": "System instructions prepended to every conversation"
+    },
+    "allowFileReads": {
+      "type": "boolean",
+      "default": true,
+      "description": "Let the assistant list and read server files via the file tunnel"
+    },
+    "allowFileWrites": {
+      "type": "boolean",
+      "default": false,
+      "description": "Let the assistant write files (gated by the user's file.write permission). Off by default."
+    },
+    "maxFileReadKb": {
+      "type": "number",
+      "default": 200,
+      "description": "Max kilobytes returned per file read (files are truncated)"
+    },
+    "maxToolIterations": {
+      "type": "number",
+      "default": 6,
+      "description": "Max tool-call rounds per chat message (safety cap)"
+    }
+  },
+  "dependencies": {}
+}

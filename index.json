@@ -64,6 +64,22 @@
         "official"
       ],
       "sha256": "92d229459dc7ce91202f8057fa922e9e417071958a356ddb7ea4f67d24e1e333"
+    },
+    {
+      "name": "ai-assistant",
+      "displayName": "AI Assistant",
+      "description": "Chat assistant that helps configure game servers, read server files, and analyze pasted logs to diagnose and fix issues",
+      "author": "Catalyst Team",
+      "version": "1.0.0",
+      "downloadUrl": "https://raw.githubusercontent.com/catalystctl/catalyst-plugins/dist/plugins/ai-assistant-1.0.0.catpkg.zip",
+      "homepage": "https://github.com/catalystctl/catalyst-plugins/tree/main/ai-assistant",
+      "tags": [
+        "ai",
+        "assistant",
+        "support",
+        "official"
+      ],
+      "sha256": "eb11d6dde2205d3bcd50eacf047bf16ae1b799a7acab5dd2902dbf2affb2b5e2"
     }
   ]
 }
