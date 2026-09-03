@@ -656,8 +656,10 @@ function BansPanel({
   const [name, setName] = useState('');
   const [minutes, setMinutes] = useState(String(defaultMinutes || 1440));
   const [reason, setReason] = useState('');
+  const [unbanId, setUnbanId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setMinutes(String(defaultMinutes || 1440));
@@ -686,8 +688,28 @@ function BansPanel({
   const unban = async (ban: CsBan) => {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
-      await api.unbanPlayer(serverId, ban.steamId, useAmx);
+      const res = await api.unbanPlayer(serverId, ban.steamId, useAmx);
+      setNotice(`Unbanned ${ban.steamId}${res.transport === 'rcon' ? ' via RCON.' : ' via console.'}`);
+      await onChanged();
+    } catch (e: any) {
+      setError(e?.message || 'Unban failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitUnban = async () => {
+    if (!unbanId.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const id = unbanId.trim();
+      const res = await api.unbanPlayer(serverId, id, useAmx);
+      setNotice(`Unbanned ${id}${res.transport === 'rcon' ? ' via RCON.' : ' via console.'}`);
+      setUnbanId('');
       await onChanged();
     } catch (e: any) {
       setError(e?.message || 'Unban failed');
@@ -715,6 +737,26 @@ function BansPanel({
         </Button>
       </div>
       {error ? <p className="mb-2 text-xs text-red-300">{error}</p> : null}
+      {notice ? <p className="mb-2 text-xs text-emerald-300">{notice}</p> : null}
+      <div className="flex flex-col sm:flex-row gap-2 mb-2">
+        <Input
+          placeholder="Unban any SteamID, e.g. STEAM_0:1:12345"
+          value={unbanId}
+          onChange={(e) => setUnbanId(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void submitUnban();
+          }}
+          style={FONT_MONO as any}
+          className="font-mono"
+        />
+        <Button size="sm" variant="outline" onClick={() => void submitUnban()} disabled={busy || !unbanId.trim()}>
+          {busy ? <Spinner /> : null} Unban SteamID
+        </Button>
+      </div>
+      <p className="text-[11px] mb-3" style={{ color: 'var(--muted-foreground)' }}>
+        Unbanning works for any ban on the server, including ones made outside this tab or before the
+        plugin was installed. Matching entries in the list below are marked as unbanned.
+      </p>
       {bans.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
           No bans recorded by this tab yet. Bans issued here are enforced with{' '}

@@ -1,6 +1,6 @@
 {
   "name": "cs16-admin",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "displayName": "CS 1.6 Server Admin",
   "description": "Live management tab for Counter-Strike 1.6 servers: chat feed, live players with SteamID, rounds and scores, kick, ban, map control, cvars and quick admin actions.",
   "author": "Catalyst Team",
