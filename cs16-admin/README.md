@@ -2,6 +2,11 @@
 
 Live management tab for Counter-Strike 1.6 (HLDS / ReHLDS) servers.
 
+The tab is **opt-in per server**: opening it on a server that is not enabled
+yet shows an "Enable for this server" prompt instead of the management UI.
+The toggle also lives in the Match settings card, so non-CS servers never get
+managed by accident. Command routes reject disabled servers with HTTP 403.
+
 Each server gets a **CS 1.6 Admin** tab with:
 
 - **Live players** — count plus name and SteamID, parsed from the `status`

@@ -16,7 +16,7 @@ import {
   parseRoundLine, parseStatusBlock,
   type CsChatMessage, type CsConnectionNotice, type CsPlayer, type CsRoundEvent, type MatchState,
 } from './parsers';
-import { Badge, Button, Card, CardTitle, FONT_MONO, Input, Select, SelectItem, Skeleton, StatsCard, TEXT_MUTED, Spinner } from './ui';
+import { Badge, Button, Card, CardTitle, Input, Select, SelectItem, Skeleton, StatsCard, Spinner } from './ui';
 
 const HISTORY_LINES = 500;
 const MAX_TEXT_BUFFER = 200_000;
@@ -191,6 +191,16 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
     );
   }
 
+  if (settings && !settings.enabled) {
+    return (
+      <ServerOptIn
+        serverId={serverId}
+        serverName={info?.name ?? null}
+        onEnabled={(s) => setSettings(s)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <Header
@@ -242,6 +252,49 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
   );
 }
 
+function ServerOptIn({
+  serverId, serverName, onEnabled,
+}: {
+  serverId: string;
+  serverName: string | null;
+  onEnabled: (s: CsSettings) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const enable = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await api.updateSettings(serverId, { enabled: true });
+      onEnabled(next);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to enable CS 1.6 Admin for this server');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="max-w-xl">
+      <CardTitle>
+        <span className="flex items-center gap-2">
+          <Crosshair className="h-4 w-4" /> CS 1.6 Admin is off for this server
+        </span>
+      </CardTitle>
+      <p className="text-sm mb-4" style={{ color: 'var(--muted-foreground)' }}>
+        {serverName ? <span className="font-medium text-foreground">{serverName}</span> : 'This server'} is not
+        managed by the CS 1.6 tab yet. Enable it to unlock live players, chat, rounds, kick, ban, map
+        control and cvars here. Other servers are unaffected.
+      </p>
+      {error ? <p className="mb-2 text-xs text-red-300">{error}</p> : null}
+      <Button size="sm" onClick={() => void enable()} disabled={busy}>
+        {busy ? <Spinner /> : null} Enable for this server
+      </Button>
+    </Card>
+  );
+}
+
 function Header({
   info, connected, playersActive, playersMax, map, transport, onRefresh,
 }: {
@@ -262,7 +315,7 @@ function Header({
         </h2>
         <p className="text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>
           {info ? <span className="font-medium text-foreground">{info.name}</span> : 'Server management'}
-          {map ? <span style={FONT_MONO as any} className="font-mono"> · {map}</span> : null}
+          {map ? <span className="font-mono"> · {map}</span> : null}
           <span> · {playersActive}{playersMax ? `/${playersMax}` : ''} players</span>
         </p>
       </div>
@@ -378,7 +431,7 @@ function PlayersPanel({
       {players.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
           No players parsed yet. Press <strong>Refresh status</strong> while the server is running, then watch this
-          list populate from the <span style={FONT_MONO as any} className="font-mono">status</span> dump.
+          list populate from the <span className="font-mono">status</span> dump.
         </p>
       ) : (
         <div className="overflow-x-auto rounded-md border border-border">
@@ -728,7 +781,7 @@ function BansPanel({
         </span>
       </CardTitle>
       <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_140px_1fr_auto] gap-2 mb-3">
-        <Input placeholder="SteamID, e.g. STEAM_0:1:12345" value={steamId} onChange={(e) => setSteamId(e.target.value)} style={FONT_MONO as any} className="font-mono" />
+        <Input placeholder="SteamID, e.g. STEAM_0:1:12345" value={steamId} onChange={(e) => setSteamId(e.target.value)} className="font-mono" />
         <Input placeholder="Player name (optional)" value={name} onChange={(e) => setName(e.target.value)} />
         <Input placeholder="Minutes (0 = permanent)" value={minutes} onChange={(e) => setMinutes(e.target.value)} inputMode="numeric" />
         <Input placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
@@ -746,7 +799,6 @@ function BansPanel({
           onKeyDown={(e) => {
             if (e.key === 'Enter') void submitUnban();
           }}
-          style={FONT_MONO as any}
           className="font-mono"
         />
         <Button size="sm" variant="outline" onClick={() => void submitUnban()} disabled={busy || !unbanId.trim()}>
@@ -955,6 +1007,17 @@ function ControlsPanel({
     }
   };
 
+  const toggleEnabled = async () => {
+    if (!settings) return;
+    try {
+      const next = await api.updateSettings(serverId, { enabled: !settings.enabled });
+      onSettingsChanged(next);
+      await onChanged();
+    } catch (e: any) {
+      setFeedback(e?.message || 'Failed to save settings');
+    }
+  };
+
   const loadBanFiles = async () => {
     setBanFilesOpen((v) => !v);
     if (banFiles) return;
@@ -986,6 +1049,12 @@ function ControlsPanel({
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={settings?.enabled === false ? 'zinc' : 'green'}>
+            {settings?.enabled === false ? 'Disabled for this server' : 'Enabled for this server'}
+          </Badge>
+          <Button size="sm" variant="outline" onClick={() => void toggleEnabled()}>
+            {settings?.enabled === false ? 'Enable for this server' : 'Disable for this server'}
+          </Button>
           <Badge tone={settings?.useAmx ? 'green' : 'zinc'}>{settings?.useAmx ? 'AMX mode' : 'Vanilla mode'}</Badge>
           <Button size="sm" variant="outline" onClick={() => void toggleAmx()}>
             Use {settings?.useAmx ? 'vanilla' : 'AMX'} commands

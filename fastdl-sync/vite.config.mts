@@ -13,6 +13,9 @@ const repoRoot = path.resolve(import.meta.dirname, '..');
 
 export default defineConfig({
   plugins: [react()],
+  // Browser bundle: never reference Node's `process` (React's dev/prod
+  // selector must fold to production at build time).
+  define: { 'process.env.NODE_ENV': '"production"' },
   resolve: {
     alias: [
       {

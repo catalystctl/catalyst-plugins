@@ -18,6 +18,8 @@ export interface CsServerInfo {
 
 export interface CsSettings {
   serverId: string;
+  /** Per-server opt-in: the tab only manages servers explicitly enabled here. */
+  enabled: boolean;
   useAmx: boolean;
   defaultBanMinutes: number;
   transport: 'auto' | 'rcon' | 'stdin';

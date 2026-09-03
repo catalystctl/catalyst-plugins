@@ -23,6 +23,13 @@ export default createFrontendPlugin({
       location: 'server',
       order: 20,
       requiredPermissions: ['server.read'],
+      // Only CS 1.6 / HLDS-CStrike game servers: match CS 1.6 template names
+      // (never Counter-Strike 2 / Source) or a cstrike HLDS configuration.
+      templateFilter: {
+        namePattern:
+          '(counter[ -]?strike|\\bcs\\b|\\bhlds\\b|cstrike)[\\s\\S]*1\\.6|1\\.6[\\s\\S]*(counter[ -]?strike|\\bcs\\b|\\bhlds\\b|cstrike)|cstrike',
+        env: { HLDS_GAME: 'cstrike' },
+      },
     },
   ],
 });

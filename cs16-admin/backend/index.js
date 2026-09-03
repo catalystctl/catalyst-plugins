@@ -242,6 +242,8 @@ async function getSettings(ctx, serverId) {
     : 'auto';
   return {
     serverId,
+    // Per-server opt-in: the tab only manages servers explicitly enabled here.
+    enabled: doc?.enabled ?? false,
     useAmx: doc?.useAmx ?? (ctx.getConfig('useAmx') ?? true),
     defaultBanMinutes: doc?.defaultBanMinutes ?? (ctx.getConfig('defaultBanMinutes') ?? DEFAULT_BAN_MINUTES),
     transport: doc?.transport ?? fallbackTransport,
@@ -260,6 +262,13 @@ async function getRconSecret(ctx, serverId) {
 function sendError(reply, err) {
   const status = err?.statusCode && Number.isInteger(err.statusCode) ? err.statusCode : 400;
   return reply.status(status).send({ success: false, error: err?.message || 'request failed' });
+}
+
+/** Reject mutating calls for servers not opted into this tab. Reads stay open. */
+function requireServerEnabled(settings, reply) {
+  if (settings?.enabled) return true;
+  reply.status(403).send({ success: false, error: 'CS 1.6 Admin is not enabled for this server' });
+  return false;
 }
 
 const plugin = {
@@ -326,6 +335,7 @@ const plugin = {
           const server = await loadServer(ctx, request.params.id);
           const body = request.body ?? {};
           const patch = {};
+          if (body.enabled !== undefined) patch.enabled = Boolean(body.enabled);
           if (body.useAmx !== undefined) patch.useAmx = Boolean(body.useAmx);
           if (body.defaultBanMinutes !== undefined) {
             patch.defaultBanMinutes = normalizeMinutes(body.defaultBanMinutes, DEFAULT_BAN_MINUTES);
@@ -420,6 +430,7 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          if (!requireServerEnabled(settings, reply)) return;
           const secret = await getRconSecret(ctx, server.id);
           const rcon = await resolveRcon(ctx, server, { ...settings, rconPassword: secret });
           if (!rcon.available) {
@@ -462,6 +473,7 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          if (!requireServerEnabled(settings, reply)) return;
           const secret = await getRconSecret(ctx, server.id);
           const res = await sendConsole(ctx, server, buildStatus(), { ...settings, rconPassword: secret }, { wantOutput: true });
           await recordAction(ctx, {
@@ -484,6 +496,7 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          if (!requireServerEnabled(settings, reply)) return;
           const secret = await getRconSecret(ctx, server.id);
           const res = await sendConsole(
             ctx, server, String(request.body?.command || ''),
@@ -510,6 +523,7 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          if (!requireServerEnabled(settings, reply)) return;
           const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
           const useAmx = body.useAmx ?? settings.useAmx ?? false;
@@ -539,6 +553,7 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          if (!requireServerEnabled(settings, reply)) return;
           const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
           const useAmx = body.useAmx ?? settings.useAmx ?? false;
@@ -570,6 +585,7 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          if (!requireServerEnabled(settings, reply)) return;
           const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
           const useAmx = body.useAmx ?? settings.useAmx ?? false;
@@ -629,6 +645,7 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          if (!requireServerEnabled(settings, reply)) return;
           const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
           const useAmx = body.useAmx ?? settings.useAmx ?? false;
@@ -678,6 +695,7 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          if (!requireServerEnabled(settings, reply)) return;
           const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
           const useAmx = body.useAmx ?? settings.useAmx ?? false;
@@ -706,6 +724,7 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          if (!requireServerEnabled(settings, reply)) return;
           const secret = await getRconSecret(ctx, server.id);
           const res = await sendConsole(
             ctx, server, buildRestart(request.body?.seconds),
@@ -731,6 +750,7 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          if (!requireServerEnabled(settings, reply)) return;
           const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
           if (!ALLOWED_CVARS.has(String(body.cvar))) {
@@ -761,6 +781,7 @@ const plugin = {
         try {
           const server = await loadServer(ctx, request.params.id);
           const settings = await getSettings(ctx, server.id);
+          if (!requireServerEnabled(settings, reply)) return;
           const secret = await getRconSecret(ctx, server.id);
           const body = request.body ?? {};
           const res = await sendConsole(
