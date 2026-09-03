@@ -191,7 +191,9 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
     );
   }
 
-  if (settings && !settings.enabled) {
+  // Strict === false: backends predating the per-server setting omit
+  // `enabled`, and those servers keep the previous always-on behavior.
+  if (settings && settings.enabled === false) {
     return (
       <ServerOptIn
         serverId={serverId}
