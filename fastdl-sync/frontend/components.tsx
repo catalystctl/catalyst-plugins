@@ -34,18 +34,23 @@ function timeAgo(iso: string | null | undefined): string {
 
 function RunRow({ run }: { run: SyncRun }) {
   return (
-    <div className="flex items-center gap-2 text-xs py-1" style={{ color: TEXT_MUTED }}>
-      {run.ok ? (
-        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-      ) : (
-        <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-      )}
-      <span className="shrink-0">{timeAgo(run.startedAt)}</span>
-      <span className="truncate">{run.summary}</span>
-      {run.errors?.length ? (
-        <span className="shrink-0" title={run.errors.join('\n')}>
-          ({run.errors.length} err)
-        </span>
+    <div className="space-y-0.5 py-1">
+      <div className="flex items-center gap-2 text-xs" style={{ color: TEXT_MUTED }}>
+        {run.ok ? (
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+        ) : (
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+        )}
+        <span className="shrink-0">{timeAgo(run.startedAt)}</span>
+        <span className="truncate">{run.summary}</span>
+      </div>
+      {!run.ok && run.errors?.length ? (
+        <pre
+          className="ml-5 whitespace-pre-wrap break-all rounded bg-zinc-950 px-2 py-1 text-[11px] text-amber-300"
+          style={{ fontFamily: FONT_MONO }}
+        >
+          {run.errors.slice(0, 3).join('\n')}
+        </pre>
       ) : null}
     </div>
   );

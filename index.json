@@ -53,8 +53,8 @@
       "displayName": "Auto FastDL",
       "description": "Automatic FastDL (sv_downloadurl) content sync for HL1/Source game servers \u2014 upload once, clients get everything",
       "author": "Catalyst Team",
-      "version": "1.0.1",
-      "downloadUrl": "https://raw.githubusercontent.com/catalystctl/catalyst-plugins/dist/plugins/fastdl-sync-1.0.1.catpkg.zip",
+      "version": "1.0.2",
+      "downloadUrl": "https://raw.githubusercontent.com/catalystctl/catalyst-plugins/dist/plugins/fastdl-sync-1.0.2.catpkg.zip",
       "homepage": "https://github.com/catalystctl/catalyst-plugins/tree/main/fastdl-sync",
       "tags": [
         "fastdl",

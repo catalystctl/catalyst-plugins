@@ -86,10 +86,27 @@ async function walkTunnel(tunnel, nodeId, serverUuid, dirPath, maxBytes, depth) 
 }
 
 /**
+ * Pairings persist `sourceServerNodeId` / `fastdlServerNodeId` (see backend/index.js).
+ * Accept the shorter aliases too so a renamed field cannot silently no-op sync.
+ */
+export function resolvePairingNodes(pairing) {
+  const sourceNodeId = pairing?.sourceServerNodeId || pairing?.sourceNodeId || null;
+  const fastdlNodeId = pairing?.fastdlServerNodeId || pairing?.fastdlNodeId || null;
+  const sourceServerUuid = pairing?.sourceServerUuid || null;
+  const fastdlServerUuid = pairing?.fastdlServerUuid || null;
+  const missing = [];
+  if (!sourceNodeId) missing.push('sourceServerNodeId');
+  if (!fastdlNodeId) missing.push('fastdlServerNodeId');
+  if (!sourceServerUuid) missing.push('sourceServerUuid');
+  if (!fastdlServerUuid) missing.push('fastdlServerUuid');
+  return { sourceNodeId, fastdlNodeId, sourceServerUuid, fastdlServerUuid, missing };
+}
+
+/**
  * Run one sync pass for a pairing. Returns a per-run report.
  *
  * @param {object} ctx  plugin context
- * @param {object} pairing  { id, sourceServerUuid, sourceNodeId, fastdlServerUuid, fastdlNodeId }
+ * @param {object} pairing  { id, sourceServerUuid, sourceServerNodeId, fastdlServerUuid, fastdlServerNodeId }
  * @param {object} opts  { generateBzip2, bz2MinSizeMb, deleteRemoved, maxFileSizeMb }
  */
 export async function syncPairing(ctx, pairing, opts) {
@@ -110,8 +127,13 @@ export async function syncPairing(ctx, pairing, opts) {
   };
 
   try {
+    const nodes = resolvePairingNodes(pairing);
+    if (nodes.missing.length) {
+      throw new Error(`pairing is missing ${nodes.missing.join(', ')}`);
+    }
+
     // 1. Scan source
-    const source = await scanServerContent(tunnel, pairing.sourceNodeId, pairing.sourceServerUuid, opts);
+    const source = await scanServerContent(tunnel, nodes.sourceNodeId, nodes.sourceServerUuid, opts);
 
     // 2. Load last-synced state (per pairing)
     const stateDoc = await ctx.collection('sync_state').findOne({ pairingId: pairing.id });
@@ -121,7 +143,7 @@ export async function syncPairing(ctx, pairing, opts) {
     // 3. Copy new/changed files: download from source, upload into FastDL
     for (const relPath of toCopy) {
       try {
-        const dl = await tunnel.queueRequest(pairing.sourceNodeId, 'download', pairing.sourceServerUuid, relPath);
+        const dl = await tunnel.queueRequest(nodes.sourceNodeId, 'download', nodes.sourceServerUuid, relPath);
         if (!dl.success || !dl.body) {
           report.errors.push(`download ${relPath}: ${dl.error ?? 'empty body'}`);
           report.skipped++;
@@ -129,7 +151,7 @@ export async function syncPairing(ctx, pairing, opts) {
         }
         const target = `fastdl/${relPath}`;
         const up = await tunnel.queueRequest(
-          pairing.fastdlNodeId, 'upload', pairing.fastdlServerUuid, target, {}, dl.body,
+          nodes.fastdlNodeId, 'upload', nodes.fastdlServerUuid, target, {}, dl.body,
         );
         if (!up.success) {
           report.errors.push(`upload ${target}: ${up.error ?? 'failed'}`);
@@ -147,7 +169,7 @@ export async function syncPairing(ctx, pairing, opts) {
               const { bzip2Compress } = await import('./bzip2.js');
               const bz2 = await bzip2Compress(dl.body);
               const up2 = await tunnel.queueRequest(
-                pairing.fastdlNodeId, 'upload', pairing.fastdlServerUuid, `${target}.bz2`, {}, bz2,
+                nodes.fastdlNodeId, 'upload', nodes.fastdlServerUuid, `${target}.bz2`, {}, bz2,
               );
               if (up2.success) report.bz2Generated++;
             } catch (err) {
@@ -166,7 +188,7 @@ export async function syncPairing(ctx, pairing, opts) {
       for (const relPath of toDelete) {
         const target = `fastdl/${relPath}`;
         try {
-          const del = await tunnel.queueRequest(pairing.fastdlNodeId, 'delete', pairing.fastdlServerUuid, target);
+          const del = await tunnel.queueRequest(nodes.fastdlNodeId, 'delete', nodes.fastdlServerUuid, target);
           if (del.success) {
             report.deleted++;
           } else {
@@ -180,7 +202,7 @@ export async function syncPairing(ctx, pairing, opts) {
           // Remove any stale twin too.
           if (opts.generateBzip2) {
             await tunnel.queueRequest(
-              pairing.fastdlNodeId, 'delete', pairing.fastdlServerUuid, `${target}.bz2`,
+              nodes.fastdlNodeId, 'delete', nodes.fastdlServerUuid, `${target}.bz2`,
             ).catch(() => {});
           }
         } catch (err) {
