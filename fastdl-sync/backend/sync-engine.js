@@ -232,13 +232,16 @@ export async function syncPairing(ctx, pairing, opts) {
   return report;
 }
 
-/** Human summary for the sync log. */
+/** Human summary for the sync log. Includes the first error so the pairing card
+ *  shows it even when the UI only renders `summary` (not `errors[]`). */
 export function summarizeReport(report) {
   const bits = [];
   bits.push(`${report.copied} copied`);
   if (report.bz2Generated) bits.push(`${report.bz2Generated} .bz2`);
   if (report.deleted) bits.push(`${report.deleted} deleted`);
   if (report.skipped) bits.push(`${report.skipped} skipped`);
-  if (report.errors.length) bits.push(`${report.errors.length} errors`);
+  if (report.errors.length) {
+    bits.push(`${report.errors.length} error${report.errors.length === 1 ? '' : 's'}: ${report.errors[0]}`);
+  }
   return bits.join(', ');
 }

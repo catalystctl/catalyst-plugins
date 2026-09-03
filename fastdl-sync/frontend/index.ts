@@ -9,7 +9,7 @@ import { FastdlAdminTab } from './components';
 export default createFrontendPlugin({
   manifest: {
     name: 'fastdl-sync',
-    version: '1.0.2',
+    version: '1.0.3',
     displayName: 'Auto FastDL',
     description: 'Automatic FastDL content sync for HL1/Source game servers',
     author: 'Catalyst Team',

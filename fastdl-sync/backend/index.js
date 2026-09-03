@@ -52,6 +52,16 @@ const plugin = {
             { pairingId: p.id },
             { sort: { startedAt: -1 }, limit: 5 },
           );
+          // Older runs stored "0 copied, 1 errors" with the real text only in
+          // errors[]. Fold it into summary so any UI that only renders summary
+          // still shows why the pass failed.
+          const recentRuns = log.map((run) => {
+            const firstError = Array.isArray(run.errors) ? run.errors[0] : null;
+            if (!run.ok && firstError && !String(run.summary ?? '').includes(firstError)) {
+              return { ...run, summary: `${run.summary || 'failed'}: ${firstError}` };
+            }
+            return run;
+          });
           enriched.push({
             ...p,
             sourceServer: src ? { uuid: src.uuid, name: src.name, status: src.status } : null,
@@ -61,7 +71,10 @@ const plugin = {
             } : null,
             lastSyncAt: state?.syncedAt ?? null,
             fileCount: state?.files ? Object.keys(state.files).length : null,
-            recentRuns: log,
+            lastError: recentRuns.find((run) => !run.ok)?.errors?.[0]
+              ?? recentRuns.find((run) => !run.ok)?.summary
+              ?? null,
+            recentRuns,
           });
         }
         return { success: true, pairings: enriched };
@@ -155,7 +168,16 @@ const plugin = {
           { pairingId: request.params.id },
           { sort: { startedAt: -1 }, limit: MAX_LOG_ENTRIES_PER_PAIRING },
         );
-        return { success: true, log };
+        return {
+          success: true,
+          log: log.map((run) => {
+            const firstError = Array.isArray(run.errors) ? run.errors[0] : null;
+            if (!run.ok && firstError && !String(run.summary ?? '').includes(firstError)) {
+              return { ...run, summary: `${run.summary || 'failed'}: ${firstError}` };
+            }
+            return run;
+          }),
+        };
       },
     });
   },

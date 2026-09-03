@@ -36,6 +36,7 @@ export interface Pairing {
   fastdlServer: FastdlServerInfo | null;
   lastSyncAt: string | null;
   fileCount: number | null;
+  lastError?: string | null;
   recentRuns: SyncRun[];
 }
 

@@ -94,6 +94,14 @@ function PairingCard({
             {' · '}
             last sync {timeAgo(pairing.lastSyncAt)}
           </div>
+          {pairing.lastError ? (
+            <pre
+              className="mt-1 whitespace-pre-wrap break-all rounded bg-zinc-950 px-2 py-1 text-[11px] text-amber-300"
+              style={{ fontFamily: FONT_MONO }}
+            >
+              {pairing.lastError}
+            </pre>
+          ) : null}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <Button size="sm" variant="outline" onClick={() => onSync(pairing.id)} disabled={syncing}>
