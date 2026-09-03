@@ -9,7 +9,7 @@ import { Cs16ServerTab } from './components';
 export default createFrontendPlugin({
   manifest: {
     name: 'cs16-admin',
-    version: '1.1.0',
+    version: '1.2.0',
     displayName: 'CS 1.6 Server Admin',
     description: 'Live management for CS 1.6 servers: chat, players, rounds, kick, ban and match control',
     author: 'Catalyst Team',
