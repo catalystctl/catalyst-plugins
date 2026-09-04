@@ -51,6 +51,46 @@ function getUserId(ctx, request) {
   }
 }
 
+/**
+ * Push a realtime update to open tabs over the panel WebSocket gateway.
+ * Frontend tabs filter by serverId and refetch, so other admins see kicks,
+ * bans, map changes and audit entries without a manual refresh.
+ * Best-effort: failures only log, never break the mutation itself.
+ */
+function broadcast(ctx, event, data) {
+  try {
+    ctx.sendWebSocketMessage?.('*', {
+      type: `plugin:cs16-admin:${event}`,
+      data: data ?? {},
+    });
+  } catch (err) {
+    ctx.logger.debug({ err: err?.message, event }, 'CS16 WS broadcast failed');
+  }
+}
+
+/** Broadcast the generic changed envelope tabs subscribe to for refetch. */
+function notifyChanged(ctx, serverId, kinds) {
+  const list = (Array.isArray(kinds) ? kinds : [kinds]).filter(Boolean);
+  if (!serverId || list.length === 0) return;
+  broadcast(ctx, 'changed', { serverId, kinds: list, ts: new Date().toISOString() });
+}
+
+/**
+ * Emit the manifest-typed backend event (for other backend plugins) and the
+ * matching WebSocket broadcast (for open tabs), plus the generic changed
+ * envelope so tabs refetch the affected lists. `typedEvent` keeps the
+ * `cs16-admin:` prefix from plugin.json; `wsEvent` is the short suffix.
+ */
+function publish(ctx, serverId, typedEvent, wsEvent, data, changedKinds) {
+  try {
+    ctx.emitTyped?.(typedEvent, data);
+  } catch (err) {
+    ctx.logger.debug({ err: err?.message, typedEvent }, 'CS16 typed emit failed');
+  }
+  broadcast(ctx, wsEvent, data);
+  notifyChanged(ctx, serverId, changedKinds);
+}
+
 async function loadServer(ctx, serverId) {
   const server = await ctx.db.servers.findUnique({
     where: { id: serverId },
@@ -386,6 +426,7 @@ const plugin = {
             detail: Object.keys(patch).filter((k) => k !== 'updatedAt').join(', ') || 'no changes',
             createdBy: getUserId(ctx, request),
           });
+          notifyChanged(ctx, server.id, ['actions', 'settings']);
           return { success: true, settings: await getSettings(ctx, server.id) };
         } catch (err) {
           return sendError(reply, err);
@@ -448,6 +489,7 @@ const plugin = {
             createdBy: getUserId(ctx, request),
             transport: 'rcon',
           });
+          notifyChanged(ctx, server.id, ['actions']);
           return {
             success: true,
             host: rcon.host,
@@ -465,6 +507,9 @@ const plugin = {
     // Ask the server for a fresh `status` dump. Over RCON the dump comes back
     // in the response so the tab can parse players immediately; over stdin it
     // arrives through the live console stream as before.
+    // Pass { silent: true } for background auto-refresh: skips the audit
+    // entry and the realtime broadcast so polling tabs don't fill the audit
+    // log or trigger refetch loops in other tabs.
     ctx.registerRoute({
       method: 'POST',
       url: '/servers/:id/refresh-players',
@@ -476,10 +521,14 @@ const plugin = {
           if (!requireServerEnabled(settings, reply)) return;
           const secret = await getRconSecret(ctx, server.id);
           const res = await sendConsole(ctx, server, buildStatus(), { ...settings, rconPassword: secret }, { wantOutput: true });
-          await recordAction(ctx, {
-            serverId: server.id, action: 'refresh-players', command: res.command,
-            createdBy: getUserId(ctx, request), transport: res.transport,
-          });
+          const silent = request.body?.silent === true || request.query?.silent === '1';
+          if (!silent) {
+            await recordAction(ctx, {
+              serverId: server.id, action: 'refresh-players', command: res.command,
+              createdBy: getUserId(ctx, request), transport: res.transport,
+            });
+            notifyChanged(ctx, server.id, ['actions', 'players']);
+          }
           return { success: true, sent: res.command, transport: res.transport, status: res.output };
         } catch (err) {
           return sendError(reply, err);
@@ -506,7 +555,8 @@ const plugin = {
             serverId: server.id, action: 'command', command: res.command,
             createdBy: getUserId(ctx, request), transport: res.transport,
           });
-          ctx.emitTyped?.('cs16-admin:command-sent', { serverId: server.id, command: res.command });
+          publish(ctx, server.id, 'cs16-admin:command-sent', 'command-sent',
+            { serverId: server.id, command: res.command }, ['actions']);
           return { success: true, sent: res.command, transport: res.transport, output: res.output ?? null };
         } catch (err) {
           return sendError(reply, err);
@@ -537,6 +587,7 @@ const plugin = {
             detail: body.team ? 'team' : 'all', createdBy: getUserId(ctx, request),
             transport: res.transport,
           });
+          notifyChanged(ctx, server.id, ['actions']);
           return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);
@@ -568,7 +619,8 @@ const plugin = {
             detail: body.reason || null, createdBy: getUserId(ctx, request),
             transport: res.transport,
           });
-          ctx.emitTyped?.('cs16-admin:player-kicked', { serverId: server.id, steamId: String(body.steamId || target) });
+          publish(ctx, server.id, 'cs16-admin:player-kicked', 'player-kicked',
+            { serverId: server.id, steamId: String(body.steamId || target) }, ['actions', 'players']);
           return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);
@@ -628,7 +680,8 @@ const plugin = {
               ctx.logger.warn({ err: err?.message, serverId: server.id }, 'Failed to persist ban to banned.cfg');
             }
           }
-          ctx.emitTyped?.('cs16-admin:player-banned', { serverId: server.id, steamId: ban.steamId });
+          publish(ctx, server.id, 'cs16-admin:player-banned', 'player-banned',
+            { serverId: server.id, steamId: ban.steamId }, ['actions', 'bans', 'players']);
           return { success: true, sent: res.command, transport: res.transport, ban };
         } catch (err) {
           return sendError(reply, err);
@@ -662,6 +715,7 @@ const plugin = {
             serverId: server.id, action: 'unban', command: res.command, target: steamId,
             createdBy: getUserId(ctx, request), transport: res.transport,
           });
+          notifyChanged(ctx, server.id, ['actions', 'bans']);
           return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);
@@ -707,7 +761,8 @@ const plugin = {
             serverId: server.id, action: 'map', command: res.command, target: String(body.map || ''),
             createdBy: getUserId(ctx, request), transport: res.transport,
           });
-          ctx.emitTyped?.('cs16-admin:map-changed', { serverId: server.id, map: String(body.map || '') });
+          publish(ctx, server.id, 'cs16-admin:map-changed', 'map-changed',
+            { serverId: server.id, map: String(body.map || '') }, ['actions', 'players']);
           return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);
@@ -734,6 +789,7 @@ const plugin = {
             serverId: server.id, action: 'restart', command: res.command,
             createdBy: getUserId(ctx, request), transport: res.transport,
           });
+          notifyChanged(ctx, server.id, ['actions']);
           return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);
@@ -765,6 +821,7 @@ const plugin = {
             detail: String(body.value ?? ''), createdBy: getUserId(ctx, request),
             transport: res.transport,
           });
+          notifyChanged(ctx, server.id, ['actions']);
           return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);
@@ -793,6 +850,7 @@ const plugin = {
             target: String(body.target || ''), createdBy: getUserId(ctx, request),
             transport: res.transport,
           });
+          notifyChanged(ctx, server.id, ['actions', 'players']);
           return { success: true, sent: res.command, transport: res.transport };
         } catch (err) {
           return sendError(reply, err);

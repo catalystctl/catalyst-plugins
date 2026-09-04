@@ -117,9 +117,112 @@ export async function updateSettings(serverId: string, patch: Partial<CsSettings
   return (res as any).settings ?? (res as any);
 }
 
-export async function refreshPlayers(serverId: string): Promise<CsRefreshResult> {
-  const res: any = await unwrap<any>(api.post(`/servers/${encodeURIComponent(serverId)}/refresh-players`, {}));
+export async function refreshPlayers(serverId: string, opts: { silent?: boolean } = {}): Promise<CsRefreshResult> {
+  const res: any = await unwrap<any>(api.post(`/servers/${encodeURIComponent(serverId)}/refresh-players`, opts.silent ? { silent: true } : {}));
   return { sent: res.sent, transport: res.transport ?? 'stdin', status: res.status ?? null };
+}
+
+// ── Realtime plugin events (panel WebSocket gateway) ────────────────────────
+// Backend broadcasts `plugin:cs16-admin:<event>` to all authenticated clients
+// after every mutation, plus a generic `changed` envelope with affected lists.
+// Tabs filter by serverId and refetch — no manual refresh needed. Falls back
+// to interval polling when the socket is unavailable, so the tab still goes
+// live without WS.
+
+export type CsChangedKind = 'actions' | 'bans' | 'settings' | 'players';
+
+function eventToKinds(event: string, data: any): CsChangedKind[] {
+  if (event === 'changed' && Array.isArray(data?.kinds)) {
+    return (data.kinds as string[]).filter((k): k is CsChangedKind =>
+      k === 'actions' || k === 'bans' || k === 'settings' || k === 'players');
+  }
+  switch (event) {
+    case 'player-banned': return ['bans', 'actions', 'players'];
+    case 'player-kicked': return ['actions', 'players'];
+    case 'map-changed': return ['actions', 'players'];
+    case 'command-sent': return ['actions'];
+    default: return ['actions'];
+  }
+}
+
+/** Subscribe to live CS 1.6 updates for one server via the shared panel `/ws`. */
+export function subscribePluginEvents(
+  serverId: string,
+  onChanged: (kinds: CsChangedKind[]) => void,
+  onStatus?: (connected: boolean) => void,
+): () => void {
+  let closed = false;
+  let ws: WebSocket | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let attempt = 0;
+
+  const connect = () => {
+    if (closed) return;
+    let url: string;
+    try {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      url = `${proto}//${window.location.host}/ws`;
+    } catch {
+      return;
+    }
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(url);
+    } catch {
+      scheduleReconnect();
+      return;
+    }
+    ws = socket;
+
+    socket.onopen = () => {
+      if (closed || ws !== socket) return;
+      attempt = 0;
+      onStatus?.(true);
+    };
+
+    socket.onmessage = (ev) => {
+      if (closed || ws !== socket) return;
+      try {
+        const msg = JSON.parse(String(ev.data));
+        const type = typeof msg?.type === 'string' ? msg.type : '';
+        if (!type.startsWith('plugin:cs16-admin:')) return;
+        const data = msg.data ?? {};
+        if (data.serverId && data.serverId !== serverId) return;
+        const short = type.slice('plugin:cs16-admin:'.length);
+        onChanged(eventToKinds(short, data));
+      } catch {
+        /* ignore malformed frames */
+      }
+    };
+
+    const down = () => {
+      if (closed || ws !== socket) return;
+      onStatus?.(false);
+      scheduleReconnect();
+    };
+    socket.onclose = down;
+    socket.onerror = down;
+  };
+
+  const scheduleReconnect = () => {
+    if (closed) return;
+    try { ws?.close(); } catch { /* ignore */ }
+    if (ws) ws = null;
+    // Cap retries at 30s; polling fallback keeps the tab live meanwhile.
+    const delay = Math.min(30_000, 1000 * Math.pow(1.6, Math.min(attempt, 8)));
+    attempt += 1;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(connect, delay);
+  };
+
+  connect();
+  return () => {
+    closed = true;
+    if (timer) clearTimeout(timer);
+    timer = null;
+    try { ws?.close(); } catch { /* ignore */ }
+    ws = null;
+  };
 }
 
 export async function fetchTransport(serverId: string): Promise<CsTransport> {

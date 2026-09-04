@@ -1,6 +1,6 @@
 {
   "name": "cs16-admin",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "displayName": "CS 1.6 Server Admin",
   "description": "Live management tab for Counter-Strike 1.6 servers: chat feed, live players with SteamID, rounds and scores, kick, ban, map control, cvars and quick admin actions.",
   "author": "Catalyst Team",
@@ -47,6 +47,10 @@
     }
   },
   "events": {
+    "cs16-admin:changed": {
+      "payload": { "serverId": "string", "kinds": "string[]" },
+      "description": "Any CS 1.6 tab data changed (bans, actions, settings, players) — tabs refetch without a manual refresh"
+    },
     "cs16-admin:player-banned": {
       "payload": { "serverId": "string", "steamId": "string" },
       "description": "An admin banned a player through the CS 1.6 tab"

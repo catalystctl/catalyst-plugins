@@ -33,6 +33,12 @@ Each server gets a **CS 1.6 Admin** tab with:
 - Reads use the panel's existing console history (`GET /api/servers/:id/logs`)
   and live stream (`GET /api/servers/:id/console/stream`). No extra agent
   protocol is needed.
+- The tab stays live without manual refresh: chat, joins and rounds stream
+  over console SSE, players re-query silently every 15 seconds, bans and
+  header info every 20 seconds, and every kick, ban, map change, cvar, chat
+  message and settings change broadcasts over the panel WebSocket
+  (`plugin:cs16-admin:changed`) so all open tabs refetch instantly. The audit
+  log polls every 15 seconds and reloads immediately on those broadcasts.
 - Writes go through the plugin backend (`/api/plugins/cs16-admin/...`),
   which validates every command against an allowlist and sends it via the
   configured transport. Writes require `console.write`, `server.write` or

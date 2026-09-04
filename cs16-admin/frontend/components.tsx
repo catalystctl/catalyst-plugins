@@ -21,6 +21,11 @@ import { Badge, Button, Card, CardTitle, Input, Select, SelectItem, Skeleton, St
 const HISTORY_LINES = 500;
 const MAX_TEXT_BUFFER = 200_000;
 const MAX_FEED = 300;
+// Background polling keeps every list live without a manual refresh. The
+// players poll uses silent status (no audit entry, no broadcast) so open tabs
+// don't fill the audit log or trigger refetch loops in each other.
+const PLAYERS_POLL_MS = 15_000;
+const META_POLL_MS = 20_000;
 
 function useNow(intervalMs = 30_000): number {
   const [now, setNow] = useState(() => Date.now());
@@ -63,6 +68,9 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  // Bumped whenever bans/actions/settings change (WS event or local action)
+  // so the audit panel reloads immediately instead of waiting for its poll.
+  const [auditRefreshKey, setAuditRefreshKey] = useState(0);
 
   const [rawText, setRawText] = useState('');
   const [chat, setChat] = useState<CsChatMessage[]>([]);
@@ -156,6 +164,30 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
     return unsub;
   }, [serverId, ingestChunk]);
 
+  // Silent background status: parses RCON output immediately, otherwise the
+  // dump arrives through the live console stream. Never writes audit entries.
+  const playersBusyRef = useRef(false);
+  const silentPlayers = useCallback(async () => {
+    if (playersBusyRef.current) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
+    playersBusyRef.current = true;
+    try {
+      const res = await api.refreshPlayers(serverId, { silent: true });
+      if (res.status) ingestChunk(res.status.endsWith('\n') ? res.status : `${res.status}\n`, 'stdout');
+    } catch {
+      /* background poll stays quiet — header keeps the last snapshot */
+    } finally {
+      playersBusyRef.current = false;
+    }
+  }, [serverId, ingestChunk]);
+
+  // First paint should already show players: history may hold a status dump,
+  // otherwise fetch one silently a moment after meta loads.
+  useEffect(() => {
+    const t = setTimeout(() => void silentPlayers(), 1200);
+    return () => clearTimeout(t);
+  }, [serverId, silentPlayers]);
+
   const status = useMemo(() => parseStatusBlock(rawText), [rawText]);
   const match: MatchState = useMemo(() => {
     let state = emptyMatchState();
@@ -164,8 +196,77 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
     return state;
   }, [roundEvents, status.map]);
 
+  // Local actions refresh every list at once so the actor sees the result
+  // instantly; other tabs learn about it through the WS broadcast below.
+  const refreshAfterAction = useCallback(async () => {
+    await loadMeta();
+    setAuditRefreshKey((k) => k + 1);
+    void silentPlayers();
+  }, [loadMeta, silentPlayers]);
+
+  // Instant updates from other tabs/admins: backend broadcasts
+  // `plugin:cs16-admin:changed` after every mutation.
+  useEffect(() => {
+    const unsub = api.subscribePluginEvents(serverId, (kinds) => {
+      void loadMeta();
+      if (kinds.includes('actions') || kinds.includes('bans') || kinds.includes('settings')) {
+        setAuditRefreshKey((k) => k + 1);
+      }
+      if (kinds.includes('players')) void silentPlayers();
+    });
+    return unsub;
+  }, [serverId, loadMeta, silentPlayers]);
+
+  // Polling fallback keeps the tab live when WS is unreachable. Skipped while
+  // hidden, while disabled, or when the server isn't running (no status to read).
+  const enabled = settings ? settings.enabled !== false : true;
+  const running = (info?.status ?? '').toLowerCase() === 'running';
+  useEffect(() => {
+    if (!enabled) return;
+    const t = setInterval(() => {
+      if (running || !info) void silentPlayers();
+    }, PLAYERS_POLL_MS);
+    return () => clearInterval(t);
+  }, [enabled, running, info, silentPlayers]);
+  useEffect(() => {
+    if (!enabled) return;
+    const t = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void loadMeta();
+    }, META_POLL_MS);
+    return () => clearInterval(t);
+  }, [enabled, loadMeta]);
+
+  // Re-sync on reconnect and when the tab regains focus.
+  const wasConnectedRef = useRef(false);
+  useEffect(() => {
+    if (connected && !wasConnectedRef.current) {
+      void loadMeta();
+      void silentPlayers();
+      setAuditRefreshKey((k) => k + 1);
+    }
+    wasConnectedRef.current = connected;
+  }, [connected, loadMeta, silentPlayers]);
+  useEffect(() => {
+    const onFocus = () => {
+      void loadMeta();
+      void silentPlayers();
+      setAuditRefreshKey((k) => k + 1);
+    };
+    const onVisibility = () => {
+      if (typeof document !== 'undefined' && !document.hidden) onFocus();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [loadMeta, silentPlayers]);
+
   const refreshAll = useCallback(async () => {
     await loadMeta();
+    setAuditRefreshKey((k) => k + 1);
     try {
       const res = await api.refreshPlayers(serverId);
       // Over RCON the status dump comes back in the response — parse it
@@ -227,20 +328,20 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
       ) : null}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatsCard label="Players" value={`${status.playersActive ?? status.players.length}${status.playersMax ? ` / ${status.playersMax}` : ''}`} sub={connected ? 'live stream' : 'last snapshot'} />
+        <StatsCard label="Players" value={`${status.playersActive ?? status.players.length}${status.playersMax ? ` / ${status.playersMax}` : ''}`} sub={connected ? 'live stream' : 'auto-refresh'} />
         <StatsCard label="Map" value={match.map ?? status.map ?? '—'} sub={info?.status ? `server ${info.status}` : undefined} />
         <StatsCard label="Round" value={match.round > 0 ? String(match.round) : '—'} sub={`CT ${match.ctScore} : ${match.tScore} T`} />
         <StatsCard label="Active bans" value={String(bans.filter((b) => (b.status ?? 'active') === 'active').length)} sub={actionCount != null ? `${actionCount} audit entries` : 'audit log below'} />
       </div>
 
-      <PlayersPanel serverId={serverId} players={status.players} useAmx={settings?.useAmx ?? true} onChanged={loadMeta} />
+      <PlayersPanel serverId={serverId} players={status.players} useAmx={settings?.useAmx ?? true} onChanged={refreshAfterAction} />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <ChatPanel serverId={serverId} chat={chat} notices={notices} useAmx={settings?.useAmx ?? true} />
-        <RoundsPanel match={match} serverId={serverId} useAmx={settings?.useAmx ?? true} />
+        <ChatPanel serverId={serverId} chat={chat} notices={notices} useAmx={settings?.useAmx ?? true} onSent={refreshAfterAction} />
+        <RoundsPanel match={match} serverId={serverId} useAmx={settings?.useAmx ?? true} onChanged={refreshAfterAction} />
       </div>
 
-      <BansPanel serverId={serverId} bans={bans} defaultMinutes={settings?.defaultBanMinutes ?? 1440} useAmx={settings?.useAmx ?? true} onChanged={loadMeta} now={now} />
+      <BansPanel serverId={serverId} bans={bans} defaultMinutes={settings?.defaultBanMinutes ?? 1440} useAmx={settings?.useAmx ?? true} onChanged={refreshAfterAction} now={now} />
 
       <ControlsPanel
         serverId={serverId}
@@ -248,7 +349,8 @@ export function Cs16ServerTab({ serverId }: { serverId: string }) {
         transport={transport}
         onSettingsChanged={(s) => setSettings(s)}
         onTransportChanged={(t) => setTransport(t)}
-        onChanged={loadMeta}
+        onChanged={refreshAfterAction}
+        auditRefreshKey={auditRefreshKey}
       />
     </div>
   );
@@ -496,12 +598,13 @@ function PlayersPanel({
 }
 
 function ChatPanel({
-  serverId, chat, notices, useAmx,
+  serverId, chat, notices, useAmx, onSent,
 }: {
   serverId: string;
   chat: CsChatMessage[];
   notices: CsConnectionNotice[];
   useAmx: boolean;
+  onSent?: () => void;
 }) {
   const [message, setMessage] = useState('');
   const [teamOnly, setTeamOnly] = useState(false);
@@ -531,6 +634,7 @@ function ChatPanel({
     try {
       await api.sendSay(serverId, text, { team: teamOnly, useAmx });
       setMessage('');
+      onSent?.();
     } catch (e: any) {
       setError(e?.message || 'Failed to send chat');
     } finally {
@@ -607,7 +711,7 @@ function ChatPanel({
   );
 }
 
-function RoundsPanel({ match, serverId, useAmx }: { match: MatchState; serverId: string; useAmx: boolean }) {
+function RoundsPanel({ match, serverId, useAmx, onChanged }: { match: MatchState; serverId: string; useAmx: boolean; onChanged?: () => void }) {
   const [map, setMap] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -619,6 +723,7 @@ function RoundsPanel({ match, serverId, useAmx }: { match: MatchState; serverId:
       const res = await fn();
       setNotice(`Command sent${res?.transport === 'rcon' ? ' via RCON.' : ' via console.'}`);
       setMap('');
+      onChanged?.();
     } catch (e: any) {
       setNotice(e?.message || 'Command failed');
     } finally {
@@ -878,7 +983,7 @@ const CVAR_PRESETS: Array<{ cvar: string; label: string; placeholder: string }> 
 ];
 
 function ControlsPanel({
-  serverId, settings, transport, onSettingsChanged, onTransportChanged, onChanged,
+  serverId, settings, transport, onSettingsChanged, onTransportChanged, onChanged, auditRefreshKey,
 }: {
   serverId: string;
   settings: CsSettings | null;
@@ -886,6 +991,7 @@ function ControlsPanel({
   onSettingsChanged: (s: CsSettings) => void;
   onTransportChanged: (t: CsTransport | null) => void;
   onChanged: () => void;
+  auditRefreshKey: number;
 }) {
   const [cvarValues, setCvarValues] = useState<Record<string, string>>({});
   const [cvarBusy, setCvarBusy] = useState<string | null>(null);
@@ -1161,7 +1267,7 @@ function ControlsPanel({
         </div>
       </Card>
 
-      <AuditPanel serverId={serverId} />
+      <AuditPanel serverId={serverId} refreshKey={auditRefreshKey} />
     </div>
   );
 }
@@ -1172,7 +1278,7 @@ const AUDIT_ACTIONS = [
   'refresh-players', 'settings', 'rcon-test',
 ];
 
-function AuditPanel({ serverId }: { serverId: string }) {
+function AuditPanel({ serverId, refreshKey }: { serverId: string; refreshKey?: number }) {
   const [user, setUser] = useState('');
   const [action, setAction] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -1213,6 +1319,13 @@ function AuditPanel({ serverId }: { serverId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Instant reload when the parent signals a mutation (local action or WS
+  // broadcast from another tab) instead of waiting for the poll below.
+  useEffect(() => {
+    if (refreshKey) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
 
   useEffect(() => {
     const t = setInterval(() => {
