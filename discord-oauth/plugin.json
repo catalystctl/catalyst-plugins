@@ -1,10 +1,10 @@
 {
   "name": "discord-oauth",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "displayName": "Discord OAuth",
   "description": "Sign in with Discord, link Discord accounts to panel accounts, and sync Discord guild roles to panel roles (manual + scheduled).",
   "author": "Catalyst Team",
-  "catalystVersion": ">=1.61.0",
+  "catalystVersion": ">=1.62.1",
   "permissions": [
     "user.read",
     "routes.public",

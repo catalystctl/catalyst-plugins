@@ -3,7 +3,16 @@
 Sign in with Discord, link Discord accounts to panel accounts, and mirror
 Discord guild roles onto panel roles — as a Catalyst plugin (no panel
 patches required beyond the plugin-system auth bridge shipped in Catalyst
-≥ 1.61).
+≥ 1.62).
+
+> **Panel requirement: ≥ 1.62.1.** The plugin needs the panel's auth bridge
+> (`ctx.auth`, public routes, login-page provider buttons) *and* an
+> interactive plugin UI compiled into the panel build — the self-contained
+> marketplace bundle cannot use hooks (its inlined React copy is never driven
+> by the host renderer). Panels without this plugin's build-time frontend
+> refuse to load it with a version error rather than showing a broken UI.
+> Update the panel to a release whose frontend image embeds the plugin
+> (official images ≥ 1.62.1).
 
 ## Features
 
