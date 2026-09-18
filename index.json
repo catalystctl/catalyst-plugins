@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-04T00:55:00Z",
+  "updatedAt": "2026-09-18T17:59:23Z",
   "plugins": [
     {
       "name": "discord-oauth",
@@ -17,7 +17,7 @@
         "roles",
         "official"
       ],
-      "sha256": ""
+      "sha256": "a08697b5531040e66e887750c349857f143b238930f3fd64f64bc4b47158dea7"
     },
     {
       "name": "example-plugin",
@@ -32,7 +32,7 @@
         "sdk",
         "official"
       ],
-      "sha256": "29211bee1efaaa74907df8c80e0e8f449c92bb1f4daae7048279925eb79551d8"
+      "sha256": "8df438a4cf1d4f8d409a6b4fcdbed61fe398502e8a8ccf4316a64f5fc3f9f11d"
     },
     {
       "name": "egg-explorer",
@@ -48,7 +48,7 @@
         "pterodactyl",
         "official"
       ],
-      "sha256": "68d0cbc99874350638470b04df06b21f930ed553418ffa7ebbb31c6ed337c4b9"
+      "sha256": "e826029adeec243b45b1c1ce29536cd7ee126de119179ebdc76a72388e66884f"
     },
     {
       "name": "ticketing-plugin",
@@ -63,7 +63,7 @@
         "tickets",
         "official"
       ],
-      "sha256": "318bddc613261eca7ea0b832019ce500dbdd441d1b7ca75e16402346cd90e8b8"
+      "sha256": "2aa5f75b1a70e0610653416ceb0d094cfa7a415dc0b5cf99c13d575eca81fed5"
     },
     {
       "name": "fastdl-sync",
@@ -80,7 +80,7 @@
         "content",
         "official"
       ],
-      "sha256": "66967ab36ab9fa3bc79907b638bc18558b588570cfb0732bf867ba92d170d4c2"
+      "sha256": "4563a4f4a310eb26dfa2ad09bf3ec6603e4eb6b7522c3554dec44d9a92d140d0"
     },
     {
       "name": "ai-assistant",
@@ -96,7 +96,7 @@
         "support",
         "official"
       ],
-      "sha256": "dd10e5fef12b5f399c213df33e51cb180a5f91a6e438a13e61b8665592ecbbdf"
+      "sha256": "dd27d0db6820c48853d884346663da7c72fc1bd8258de455923812f358252ac8"
     },
     {
       "name": "cs16-admin",
@@ -112,7 +112,7 @@
         "counter-strike",
         "official"
       ],
-      "sha256": "f37c850335a622b1248e349bea7beef4155ec2c688a5fa7338162675fed3e2d9"
+      "sha256": "004a3af1736682313d5d4cce1ec3ea789fb795e2491937f0aab3acbcd71ffdaf"
     }
   ]
 }
