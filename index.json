@@ -3,6 +3,23 @@
   "updatedAt": "2026-09-04T00:55:00Z",
   "plugins": [
     {
+      "name": "discord-oauth",
+      "displayName": "Discord OAuth",
+      "description": "Sign in with Discord, link Discord accounts to panel accounts, and sync Discord guild roles to panel roles (manual + scheduled)",
+      "author": "Catalyst Team",
+      "version": "1.0.0",
+      "downloadUrl": "https://raw.githubusercontent.com/catalystctl/catalyst-plugins/dist/plugins/discord-oauth-1.0.0.catpkg.zip",
+      "homepage": "https://github.com/catalystctl/catalyst-plugins/tree/main/discord-oauth",
+      "tags": [
+        "discord",
+        "oauth",
+        "auth",
+        "roles",
+        "official"
+      ],
+      "sha256": ""
+    },
+    {
       "name": "example-plugin",
       "displayName": "Example Plugin",
       "description": "Comprehensive showcase of Catalyst plugin capabilities",

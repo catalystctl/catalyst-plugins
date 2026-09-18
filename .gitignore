@@ -7,3 +7,6 @@ dist/
 
 # catpkg build output
 *.catpkg.zip
+
+# Local plugin-loader staging (panel dev server)
+.cache/

@@ -1,0 +1,60 @@
+{
+  "name": "discord-oauth",
+  "version": "1.0.0",
+  "displayName": "Discord OAuth",
+  "description": "Sign in with Discord, link Discord accounts to panel accounts, and sync Discord guild roles to panel roles (manual + scheduled).",
+  "author": "Catalyst Team",
+  "catalystVersion": ">=1.61.0",
+  "permissions": [
+    "user.read",
+    "routes.public",
+    "auth.sessions",
+    "auth.users",
+    "roles.assign"
+  ],
+  "permissionDescriptions": {
+    "routes.public": "Serves the Discord authorize/callback endpoints without a panel session — required for the OAuth redirect flow.",
+    "auth.sessions": "Signs you in by creating a panel session cookie after Discord authentication succeeds.",
+    "auth.users": "Looks up panel users by Discord email and creates panel accounts for first-time Discord sign-ins (when enabled).",
+    "roles.assign": "Applies your Discord-role to panel-role mappings on sign-in and during scheduled syncs."
+  },
+  "storageEngine": "dedicated",
+  "backend": {
+    "entry": "backend/index.js"
+  },
+  "frontend": {
+    "entry": "frontend/index.ts",
+    "hasTabs": true,
+    "hasComponents": true
+  },
+  "authProviders": [
+    {
+      "id": "discord",
+      "label": "Discord",
+      "authorizePath": "authorize"
+    }
+  ],
+  "events": {
+    "discord:user_signed_in": {
+      "payload": { "userId": "string", "discordId": "string", "created": "boolean" },
+      "description": "A user completed Discord sign-in (session created)."
+    },
+    "discord:account_linked": {
+      "payload": { "userId": "string", "discordId": "string", "mode": "string" },
+      "description": "A Discord account was linked to a panel user."
+    },
+    "discord:account_unlinked": {
+      "payload": { "userId": "string", "discordId": "string" },
+      "description": "A Discord account was unlinked from a panel user."
+    },
+    "discord:roles_synced": {
+      "payload": { "userId": "string", "assigned": "number", "removed": "number", "trigger": "string" },
+      "description": "Panel roles were updated from Discord roles."
+    },
+    "discord:sync_completed": {
+      "payload": { "processed": "number", "assigned": "number", "removed": "number", "errors": "number" },
+      "description": "A scheduled or manual full sync finished."
+    }
+  },
+  "dependencies": {}
+}
