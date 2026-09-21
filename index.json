@@ -3,6 +3,23 @@
   "updatedAt": "2026-09-21T14:19:15Z",
   "plugins": [
     {
+      "name": "oidc-sso",
+      "displayName": "OIDC Single Sign-On",
+      "description": "Generic OpenID Connect single sign-on: sign in with any compliant provider (Keycloak, Authentik, Authelia, Google, Microsoft Entra, Okta)",
+      "author": "Catalyst Team",
+      "version": "1.0.0",
+      "downloadUrl": "https://raw.githubusercontent.com/catalystctl/catalyst-plugins/dist/plugins/oidc-sso-1.0.0.catpkg.zip",
+      "homepage": "https://github.com/catalystctl/catalyst-plugins/tree/main/oidc-sso",
+      "tags": [
+        "oidc",
+        "sso",
+        "oauth",
+        "auth",
+        "official"
+      ],
+      "sha256": "84c5b4993dd1541c400c0fe06f920e290503a035fd6ed3a341129ff0059b6314"
+    },
+    {
       "name": "discord-oauth",
       "displayName": "Discord OAuth",
       "description": "Sign in with Discord, link Discord accounts to panel accounts, and sync Discord guild roles to panel roles (manual + scheduled)",

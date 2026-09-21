@@ -1,0 +1,53 @@
+{
+  "name": "oidc-sso",
+  "version": "1.0.0",
+  "displayName": "OIDC Single Sign-On",
+  "description": "Generic OpenID Connect single sign-on: configure any standards-compliant identity provider (Keycloak, Authentik, Authelia, Google, Microsoft Entra, Okta) and let users sign in with it.",
+  "author": "Catalyst Team",
+  "catalystVersion": ">=1.62.1",
+  "permissions": [
+    "user.read",
+    "routes.public",
+    "auth.sessions",
+    "auth.users",
+    "roles.assign"
+  ],
+  "permissionDescriptions": {
+    "routes.public": "Serves the SSO authorize/callback endpoints and the provider picker without a panel session — required for the login redirect flow.",
+    "auth.sessions": "Signs you in by creating a panel session cookie after the identity provider authenticates you.",
+    "auth.users": "Looks up panel users by SSO email and creates panel accounts for first-time SSO sign-ins (when enabled).",
+    "roles.assign": "Applies configured default panel roles to accounts created via SSO.",
+    "user.read": "Counts existing users so the first panel account can never be created via SSO (setup wizard stays authoritative)."
+  },
+  "storageEngine": "dedicated",
+  "backend": {
+    "entry": "backend/index.js"
+  },
+  "frontend": {
+    "entry": "frontend/index.ts",
+    "hasTabs": true,
+    "hasComponents": false
+  },
+  "authProviders": [
+    {
+      "id": "sso",
+      "label": "SSO",
+      "authorizePath": "authorize"
+    }
+  ],
+  "events": {
+    "oidc:user_signed_in": {
+      "payload": { "userId": "string", "providerId": "string", "sub": "string", "created": "boolean" },
+      "description": "A user completed OIDC sign-in (session created)."
+    },
+    "oidc:account_linked": {
+      "payload": { "userId": "string", "providerId": "string", "sub": "string", "mode": "string" },
+      "description": "An OIDC identity was linked to a panel user (register, email match, or manual link)."
+    },
+    "oidc:account_unlinked": {
+      "payload": { "userId": "string", "providerId": "string", "sub": "string" },
+      "description": "An OIDC identity was unlinked from a panel user."
+    }
+  },
+  "dependencies": {}
+}
