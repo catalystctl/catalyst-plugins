@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-21T14:06:56Z",
+  "updatedAt": "2026-09-21T14:19:15Z",
   "plugins": [
     {
       "name": "discord-oauth",
@@ -17,7 +17,7 @@
         "roles",
         "official"
       ],
-      "sha256": "8036318c75705fd7097dfb62b3a659b704a3024276d70edc9d9070ea6a9fe376"
+      "sha256": "6e93e549465d1ad78c029d942329d8853d52c20d5992a473ab2bbb5234cc77da"
     },
     {
       "name": "example-plugin",
@@ -32,7 +32,7 @@
         "sdk",
         "official"
       ],
-      "sha256": "adcdbc1e24d366603dc41bc8a4fa548bb2c5501ec5d588866a9cd49527b38d3c"
+      "sha256": "62644b8d70b30bdf55a26031a49804c183303d19ab066c991e3c8890899c8f3d"
     },
     {
       "name": "egg-explorer",
@@ -48,7 +48,7 @@
         "pterodactyl",
         "official"
       ],
-      "sha256": "f73006052b4aec832ff26f8816f3e35ff3149f26c5c28eafc7732391af0c90b5"
+      "sha256": "e5a84eb9443edca94b7882d785c940c2f5649c555a16847d29a200e98e5740e5"
     },
     {
       "name": "ticketing-plugin",
@@ -63,7 +63,7 @@
         "tickets",
         "official"
       ],
-      "sha256": "fcbd45240b7076a04a170bba75fd302f1b31ecaa42f83539febb2270b42cb5a2"
+      "sha256": "6b7eb0d267c597ab6332d96a40f81cd91b60cefcd40cc36423f2e6bc9522695d"
     },
     {
       "name": "fastdl-sync",
@@ -80,7 +80,7 @@
         "content",
         "official"
       ],
-      "sha256": "2900928ca639c5fdfdbc95cc37d7e5bb8eb328600c22c8a8ca1d4a16f620eb92"
+      "sha256": "807a4c17bccbf9940c4aedd5ceb83875a240d2b4c5a5165499985dc3b3798b3c"
     },
     {
       "name": "ai-assistant",
@@ -96,7 +96,7 @@
         "support",
         "official"
       ],
-      "sha256": "4389fe6e7d04e6ad3073894d7262699c7328a8e2a2ddb2e48daa3c1b676cabe1"
+      "sha256": "b93a0df2099ebeeb3f6d9104ab1180c2fa5fc5f8e8a86ac2f7ffcb18857c5a34"
     },
     {
       "name": "cs16-admin",
@@ -112,7 +112,7 @@
         "counter-strike",
         "official"
       ],
-      "sha256": "0cf847af112f41b98f50bbc2b2bc2dd2d8b4ee497cef917b2abd6a942b90544f"
+      "sha256": "057a6f29c2eec9d70b949f86c30a7ec5ac3d256b05f74b07ab39ee74f65b74f3"
     }
   ]
 }
