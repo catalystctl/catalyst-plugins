@@ -67,7 +67,7 @@ export async function createPairing(payload: {
 }
 
 export async function deletePairing(id: string): Promise<void> {
-  await api.delete(`/pairings/${id}`);
+  await api.del(`/pairings/${id}`);
 }
 
 export async function triggerSync(id: string): Promise<void> {
