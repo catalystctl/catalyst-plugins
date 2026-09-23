@@ -1,0 +1,10 @@
+{
+  "vendorId": "acme",
+  "keyPrefix": "VND1",
+  "masterDek": "",
+  "dataFile": "./licenses.json",
+  "defaultTtlHours": 168,
+  "defaultSeats": 1,
+  "port": 8787,
+  "host": "127.0.0.1"
+}

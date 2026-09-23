@@ -130,6 +130,22 @@
         "official"
       ],
       "sha256": "057a6f29c2eec9d70b949f86c30a7ec5ac3d256b05f74b07ab39ee74f65b74f3"
+    },
+    {
+      "name": "licensed-example",
+      "displayName": "Licensed Example",
+      "description": "Reference client for vendor-owned license validation and encrypted payloads. Point licensing.licenseServer at your own license server before use.",
+      "author": "Catalyst Team",
+      "version": "1.0.0",
+      "downloadUrl": "https://raw.githubusercontent.com/catalystctl/catalyst-plugins/dist/plugins/licensed-example-1.0.0.catpkg.zip",
+      "homepage": "https://github.com/catalystctl/catalyst-plugins/tree/main/licensed-example",
+      "tags": [
+        "example",
+        "licensing",
+        "sdk",
+        "official"
+      ],
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
     }
   ]
 }

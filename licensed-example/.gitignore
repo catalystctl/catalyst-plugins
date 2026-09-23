@@ -1,0 +1,6 @@
+# Build scratch — never commit.
+# dist/dek.base64url is the MASTER DEK for this plugin version. It is a secret:
+# it goes into your license server's config.json and nowhere else.
+dist/
+dist/dek.base64url
+node_modules/

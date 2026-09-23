@@ -1,0 +1,28 @@
+{
+  "name": "licensed-example",
+  "version": "1.0.0",
+  "displayName": "Licensed Example",
+  "description": "Reference client for vendor-owned license validation and encrypted payloads.",
+  "author": "Catalyst Team",
+  "catalystVersion": ">=1.62.0",
+  "permissions": ["server.read"],
+  "permissionDescriptions": {
+    "server.read": "Reads server records to show a licensed feature."
+  },
+  "backend": { "entry": "backend/index.js" },
+  "frontend": { "entry": "frontend/index.ts", "hasTabs": true },
+  "config": {
+    "licenseKey": {
+      "type": "password",
+      "default": "",
+      "description": "License key issued by the vendor. Leave empty to run in trial mode."
+    }
+  },
+  "licensing": {
+    "licenseServer": "http://127.0.0.1:8787/v1/activate",
+    "buyUrl": "https://vendor.example/buy",
+    "contact": ["127.0.0.1"],
+    "encrypted": true,
+    "cacheTtlHours": 168
+  }
+}
