@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-21T20:25:57Z",
+  "updatedAt": "2026-09-23T01:17:28Z",
   "plugins": [
     {
       "name": "oidc-sso",
@@ -17,7 +17,7 @@
         "auth",
         "official"
       ],
-      "sha256": "490a4d9c9cd03ac7174c119010eccbed40cb10dfc0c33efa0f8e0e91aa93e3ba"
+      "sha256": "b6c088b60cc0186ff1999e55a14b296ccaf2e2d53ba89cb12b56c0886305bcfe"
     },
     {
       "name": "discord-oauth",
@@ -34,7 +34,7 @@
         "roles",
         "official"
       ],
-      "sha256": "9df336713baf8a8894c5ac046ba7a35d30fa226cd77368f331d252ae5aaeffb8"
+      "sha256": "38d754fc4f127742de2c14480d11de0b2e83bd80bf7faacdf01b17a770378dbe"
     },
     {
       "name": "example-plugin",
@@ -49,7 +49,7 @@
         "sdk",
         "official"
       ],
-      "sha256": "0a54f5e9649f85bdaf77f1fdb8c0d49093af14e81e9d167e5da70e0e92a8ef24"
+      "sha256": "b1ba51e1bfede88a6c58d80a4b7fe404574bec9ed748e0f99667c012e6e75308"
     },
     {
       "name": "egg-explorer",
@@ -65,7 +65,7 @@
         "pterodactyl",
         "official"
       ],
-      "sha256": "2aade73f64d4fe4f1a7f6c77393cb61adaa97355c8b0bdda5f30488a01914d28"
+      "sha256": "69c57e5c2a69364aa09358472a48c31117ff66cebbfafc8ee9881a1b2c091505"
     },
     {
       "name": "ticketing-plugin",
@@ -80,7 +80,7 @@
         "tickets",
         "official"
       ],
-      "sha256": "99e538c06605046e86df5deca0d2cd3ef10a6472b6e0139bde2bc99bd32abc44"
+      "sha256": "240db98ddb076165c70191554c70eabfd562ad6713d11c2cfe31547d19e28343"
     },
     {
       "name": "fastdl-sync",
@@ -97,7 +97,7 @@
         "content",
         "official"
       ],
-      "sha256": "fe7f01145b083f306df57b35b638fb9f3ddb74517a101bc3aa532a68c5acc250"
+      "sha256": "93c5512ffea8c5823ff632f7acb1753b104736f7836bbdcf897650481c41d5e9"
     },
     {
       "name": "ai-assistant",
@@ -113,7 +113,7 @@
         "support",
         "official"
       ],
-      "sha256": "6bb5d633bcd365f8aa178f0dae9fc545f501eb1fa4e58c851008272602756caa"
+      "sha256": "2aa2d0c4549b6996eb69b79ff21e56bbe603819443d34fcd60d7663bd72356b1"
     },
     {
       "name": "cs16-admin",
@@ -129,7 +129,7 @@
         "counter-strike",
         "official"
       ],
-      "sha256": "c6763fed6ba57121d72d01416b411b18e351f4bdbfe522785d6daac9e0bd796b"
+      "sha256": "0d45d7f16330c8caafd2e5ee43a2a869c8f9b4c600e3888ec17aa31c6be90999"
     },
     {
       "name": "licensed-example",
@@ -145,7 +145,7 @@
         "sdk",
         "official"
       ],
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      "sha256": "43ae38574c65ca96745f669de19c0f25b0dc59cc491879650ee0fae183001e8b"
     }
   ]
 }
