@@ -1,0 +1,34 @@
+{
+  "name": "backup-gauge",
+  "version": "1.0.0",
+  "displayName": "Backup Gauge",
+  "description": "Adds a backup storage gauge to the server detail header, beside CPU, memory and disk. Shows how much of the server's backup allocation is in use.",
+  "author": "Catalyst Team",
+  "catalystVersion": ">=1.82.0",
+  "permissions": [],
+  "backend": {
+    "entry": "backend/index.js"
+  },
+  "frontend": {
+    "entry": "frontend/index.ts",
+    "hasComponents": true
+  },
+  "config": {
+    "refreshSeconds": {
+      "type": "number",
+      "default": 60,
+      "description": "How often the gauge re-reads backup usage, in seconds (15-3600). The panel rate-limits the backup list to 30 requests per minute, so do not go below 15."
+    },
+    "warnPercent": {
+      "type": "number",
+      "default": 80,
+      "description": "Allocation usage (percent) at which the reading turns amber."
+    },
+    "criticalPercent": {
+      "type": "number",
+      "default": 90,
+      "description": "Allocation usage (percent) at which the reading turns red."
+    }
+  },
+  "dependencies": {}
+}

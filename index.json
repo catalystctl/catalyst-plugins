@@ -146,6 +146,21 @@
         "official"
       ],
       "sha256": "43ae38574c65ca96745f669de19c0f25b0dc59cc491879650ee0fae183001e8b"
+    },
+    {
+      "name": "backup-gauge",
+      "displayName": "Backup Gauge",
+      "description": "Adds a backup storage gauge to the server detail header, beside CPU, memory and disk. Shows how much of the server's backup allocation is in use.",
+      "author": "Catalyst Team",
+      "version": "1.0.0",
+      "downloadUrl": "https://raw.githubusercontent.com/catalystctl/catalyst-plugins/dist/plugins/backup-gauge-1.0.0.catpkg.zip",
+      "homepage": "https://github.com/catalystctl/catalyst-plugins/tree/main/backup-gauge",
+      "tags": [
+        "backups",
+        "ui",
+        "official"
+      ],
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
     }
   ]
 }
